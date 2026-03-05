@@ -10,6 +10,9 @@ import 'package:private_planner/widgets/add_todo_dialog.dart';
 import 'package:private_planner/screens/settings_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:private_planner/services/sync_service.dart';
+import 'package:private_planner/providers/database_provider.dart';
+
+final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -59,27 +62,38 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth > 800;
-          final listWidget = _buildList(context, ref, todosStream,
-              categoriesAsync, isDesktop, selectedTodoId);
+      body: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktop = constraints.maxWidth > 800;
+              final listWidget = _buildList(context, ref, todosStream,
+                  categoriesAsync, isDesktop, selectedTodoId);
 
-          if (isDesktop) {
-            return Row(
-              children: [
-                Expanded(flex: 1, child: listWidget),
-                const VerticalDivider(width: 1),
-                Expanded(
-                    flex: 2,
-                    child: _buildDetail(
-                        context, ref, todosStream, selectedTodoId)),
-              ],
-            );
-          } else {
-            return listWidget;
-          }
-        },
+              if (isDesktop) {
+                return Row(
+                  children: [
+                    Expanded(flex: 1, child: listWidget),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                        flex: 2,
+                        child: _buildDetail(
+                            context, ref, todosStream, selectedTodoId)),
+                  ],
+                );
+              } else {
+                return listWidget;
+              }
+            },
+          ),
+          if (ref.watch(isDraggingTodoProvider))
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 32,
+              child: _buildDragBaskets(context, ref),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -160,17 +174,51 @@ class HomeScreen extends ConsumerWidget {
                             );
                           }
                         },
-                        child: Container(
-                          decoration: isDesktop && isSelected
-                              ? BoxDecoration(
-                                  border: Border.all(
-                                      color: Theme.of(context).primaryColor,
-                                      width: 2),
-                                  borderRadius: BorderRadius.circular(12),
-                                )
-                              : null,
-                          child: TodoListTile(
-                              todo: item.todo, category: item.category),
+                        child: Draggable<Todo>(
+                          data: item.todo,
+                          feedback: Material(
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(12),
+                            color: Theme.of(context).cardColor,
+                            child: SizedBox(
+                              width: 300,
+                              child: TodoListTile(
+                                  todo: item.todo, category: item.category),
+                            ),
+                          ),
+                          childWhenDragging: Opacity(
+                            opacity: 0.3,
+                            child: Container(
+                              decoration: isDesktop && isSelected
+                                  ? BoxDecoration(
+                                      border: Border.all(
+                                          color: Theme.of(context).primaryColor,
+                                          width: 2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    )
+                                  : null,
+                              child: TodoListTile(
+                                  todo: item.todo, category: item.category),
+                            ),
+                          ),
+                          onDragStarted: () => ref
+                              .read(isDraggingTodoProvider.notifier)
+                              .state = true,
+                          onDragEnd: (_) => ref
+                              .read(isDraggingTodoProvider.notifier)
+                              .state = false,
+                          child: Container(
+                            decoration: isDesktop && isSelected
+                                ? BoxDecoration(
+                                    border: Border.all(
+                                        color: Theme.of(context).primaryColor,
+                                        width: 2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  )
+                                : null,
+                            child: TodoListTile(
+                                todo: item.todo, category: item.category),
+                          ),
                         ),
                       );
                     },
@@ -212,6 +260,68 @@ class HomeScreen extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, s) => const Center(child: Text('Fehler')),
+    );
+  }
+
+  Widget _buildDragBaskets(BuildContext context, WidgetRef ref) {
+    final statuses = ['Backlog', 'In Progress', 'Review', 'Done'];
+    final colors = [Colors.grey, Colors.blue, Colors.orange, Colors.green];
+    final icons = [
+      Icons.inbox,
+      Icons.play_arrow,
+      Icons.visibility,
+      Icons.check
+    ];
+
+    return Material(
+      elevation: 12,
+      borderRadius: BorderRadius.circular(16),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Container(
+        height: 120,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: List.generate(4, (index) {
+            final status = statuses[index];
+            return DragTarget<Todo>(
+              onAcceptWithDetails: (details) async {
+                final todo = details.data;
+                final db = ref.read(databaseProvider);
+                await db.update(db.todos).replace(
+                    todo.copyWith(status: status, version: todo.version + 1));
+              },
+              builder: (context, candidateData, rejectedData) {
+                final isHovered = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: isHovered ? 140 : 120,
+                  decoration: BoxDecoration(
+                    color: isHovered
+                        ? colors[index].withValues(alpha: 0.2)
+                        : Theme.of(context).colorScheme.surface,
+                    border: Border.all(
+                        color: colors[index], width: isHovered ? 3 : 1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icons[index],
+                          color: colors[index], size: isHovered ? 40 : 32),
+                      const SizedBox(height: 8),
+                      Text(status,
+                          style: TextStyle(
+                              color: colors[index],
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                );
+              },
+            );
+          }),
+        ),
+      ),
     );
   }
 }
