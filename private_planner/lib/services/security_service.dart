@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final securityServiceProvider =
     Provider<SecurityService>((ref) => SecurityService());
@@ -16,8 +18,53 @@ class SecurityService {
   static const _isSetupAlias = 'app_is_setup';
   static const _useBiometricsAlias = 'use_biometrics';
 
+  Future<void> writeSecure(String key, String value) async {
+    if (kIsWeb || (kDebugMode && Platform.isMacOS)) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+      return;
+    }
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (e) {
+      debugPrint(
+          'SecurityService: Secure Storage failed ($e), falling back to SharedPreferences');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    }
+  }
+
+  Future<String?> readSecure(String key) async {
+    if (kIsWeb || (kDebugMode && Platform.isMacOS)) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+    try {
+      return await _storage.read(key: key);
+    } catch (e) {
+      debugPrint(
+          'SecurityService: Secure Storage failed ($e), falling back to SharedPreferences');
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+  }
+
+  Future<void> deleteSecure(String key) async {
+    if (kIsWeb || (kDebugMode && Platform.isMacOS)) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      return;
+    }
+    try {
+      await _storage.delete(key: key);
+    } catch (e) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+    }
+  }
+
   Future<bool> isAppSetup() async {
-    final setup = await _storage.read(key: _isSetupAlias);
+    final setup = await readSecure(_isSetupAlias);
     return setup == 'true';
   }
 
@@ -34,8 +81,8 @@ class SecurityService {
     );
     final keyBytes = await secretKey.extractBytes();
 
-    await _storage.write(key: _masterKeyAlias, value: base64Encode(keyBytes));
-    await _storage.write(key: _isSetupAlias, value: 'true');
+    await writeSecure(_masterKeyAlias, base64Encode(keyBytes));
+    await writeSecure(_isSetupAlias, 'true');
   }
 
   Future<bool> canUseBiometrics() async {
@@ -53,7 +100,6 @@ class SecurityService {
         return false;
       }
 
-      // Simplest call to ensure compatibility across versions
       final result = await _auth.authenticate(
         localizedReason: 'Bitte authentifiziere dich, um die App zu öffnen',
       );
@@ -66,11 +112,11 @@ class SecurityService {
   }
 
   Future<void> setUseBiometrics(bool use) async {
-    await _storage.write(key: _useBiometricsAlias, value: use.toString());
+    await writeSecure(_useBiometricsAlias, use.toString());
   }
 
   Future<bool> shouldPromptBiometrics() async {
-    final use = await _storage.read(key: _useBiometricsAlias);
+    final use = await readSecure(_useBiometricsAlias);
     return use == 'true';
   }
 
@@ -88,7 +134,7 @@ class SecurityService {
       );
       final keyBytes = await secretKey.extractBytes();
 
-      final storedKeyBase64 = await _storage.read(key: _masterKeyAlias);
+      final storedKeyBase64 = await readSecure(_masterKeyAlias);
       if (storedKeyBase64 == null) return false;
 
       final storedKey = base64Decode(storedKeyBase64);
@@ -99,7 +145,7 @@ class SecurityService {
   }
 
   Future<List<int>?> getMasterKey() async {
-    final keyBase64 = await _storage.read(key: _masterKeyAlias);
+    final keyBase64 = await readSecure(_masterKeyAlias);
     if (keyBase64 == null) return null;
     return base64Decode(keyBase64);
   }

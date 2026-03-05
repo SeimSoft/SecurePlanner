@@ -26,44 +26,7 @@ func main() {
 	r := gin.Default()
 
 	// Auth routes
-	// Registration disabled for public as requested. Admin must create users.
-	// Placeholder admin route for creating users and generating QR codes.
-	r.POST("/admin/create-user", func(c *gin.Context) {
-		// In a real app, this would be protected by admin middleware
-		var req struct {
-			Username string `json:"username" binding:"required"`
-			Password string `json:"password" binding:"required"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		if err := auth.Register(req.Username, req.Password); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not register user"})
-			return
-		}
-
-		var userID int
-		err := database.DB.QueryRow("SELECT id FROM users WHERE username = ?", req.Username).Scan(&userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		token, err := auth.GenerateQRToken(userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate QR token"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": "User created",
-			"qr_data": gin.H{
-				"url":   "http://localhost:8080", // Hardcoded for now
-				"token": token,
-			},
-		})
-	})
+	// Registration disabled for public as requested. Admin must use the 'admin' CLI tool.
 
 	r.POST("/qr-login", func(c *gin.Context) {
 		var req struct {
@@ -290,54 +253,6 @@ func main() {
 				todos = append(todos, t)
 			}
 			c.JSON(http.StatusOK, todos)
-		})
-
-		// Sync: Push todos
-		protected.POST("/todos/sync", func(c *gin.Context) {
-			userID := c.MustGet("user_id").(int)
-			var incomingTodos []models.Todo
-			if err := c.ShouldBindJSON(&incomingTodos); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			tx, err := database.DB.Begin()
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			for _, t := range incomingTodos {
-				_, err := tx.Exec(`
-					INSERT INTO todos (id, user_id, owner_id, category_id, title, priority, status, time_estimate, due_date, encrypted_blob, version, deleted, updated_at)
-					VALUES (?, COALESCE((SELECT user_id FROM todos WHERE id = ?), ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-					ON CONFLICT(id) DO UPDATE SET
-						owner_id = excluded.owner_id,
-						category_id = excluded.category_id,
-						title = excluded.title,
-						priority = excluded.priority,
-						status = excluded.status,
-						time_estimate = excluded.time_estimate,
-						due_date = excluded.due_date,
-						encrypted_blob = excluded.encrypted_blob,
-						version = excluded.version,
-						deleted = excluded.deleted,
-						updated_at = CURRENT_TIMESTAMP
-					WHERE excluded.version > todos.version`,
-					t.ID, t.ID, userID, t.OwnerID, t.CategoryID, t.Title, t.Priority, t.Status, t.TimeEstimate, t.DueDate, t.EncryptedBlob, t.Version, t.Deleted, time.Now())
-				if err != nil {
-					tx.Rollback()
-					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-					return
-				}
-			}
-
-			if err := tx.Commit(); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"message": "Sync successful"})
 		})
 
 		// Sync: Push todos

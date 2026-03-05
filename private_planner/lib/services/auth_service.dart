@@ -1,27 +1,28 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 import 'package:private_planner/services/api_provider.dart';
+import 'package:private_planner/services/security_service.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) {
   final dio = ref.watch(baseDioProvider);
-  return AuthService(dio);
+  final securityService = ref.watch(securityServiceProvider);
+  return AuthService(dio, securityService);
 });
 
 class AuthService {
   final Dio _dio;
+  final SecurityService _securityService;
   String? _baseUrl;
   String? _authToken;
   bool _initialized = false;
 
-  AuthService(this._dio);
+  AuthService(this._dio, this._securityService);
 
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
-    const storage = FlutterSecureStorage();
-    _baseUrl = await storage.read(key: 'server_url');
-    _authToken = await storage.read(key: 'auth_token');
+    _baseUrl = await _securityService.readSecure('server_url');
+    _authToken = await _securityService.readSecure('auth_token');
     _initialized = true;
   }
 
@@ -31,15 +32,11 @@ class AuthService {
     } else {
       _baseUrl = url;
     }
-    const storage = FlutterSecureStorage();
-    storage.write(key: 'server_url', value: _baseUrl);
+    _securityService.writeSecure('server_url', _baseUrl ?? '');
     _initialized = true;
   }
 
   String? get baseUrl {
-    // This is synchronous, but the first call to auth might need the value.
-    // In Flutter, we often initialize this via a FutureProvider or similar.
-    // For now, we'll try to load it.
     return _baseUrl;
   }
 
@@ -62,8 +59,7 @@ class AuthService {
         'password': password,
       });
       final token = response.data['token'];
-      const storage = FlutterSecureStorage();
-      await storage.write(key: 'auth_token', value: token);
+      await _securityService.writeSecure('auth_token', token);
       _authToken = token;
       return token;
     } catch (e) {
@@ -73,7 +69,16 @@ class AuthService {
 
   Future<String?> loginWithQr(String qrData) async {
     try {
-      final data = jsonDecode(qrData);
+      String decodedData = qrData;
+      if (!qrData.startsWith('{')) {
+        try {
+          decodedData = utf8.decode(base64Decode(qrData));
+        } catch (_) {
+          // Keep as is, might be raw json
+        }
+      }
+
+      final data = jsonDecode(decodedData);
       final url = data['url'] as String;
       final token = data['token'] as String;
 
@@ -83,9 +88,8 @@ class AuthService {
       });
 
       final jwt = response.data['token'];
-      const storage = FlutterSecureStorage();
-      await storage.write(key: 'auth_token', value: jwt);
-      await storage.write(key: 'server_url', value: url);
+      await _securityService.writeSecure('auth_token', jwt);
+      await _securityService.writeSecure('server_url', url);
       _authToken = jwt;
       _initialized = true;
       return jwt;
@@ -95,15 +99,13 @@ class AuthService {
   }
 
   Future<void> logout() async {
-    const storage = FlutterSecureStorage();
-    await storage.delete(key: 'auth_token');
+    await _securityService.deleteSecure('auth_token');
     _authToken = null;
   }
 
   Future<void> disconnect() async {
-    const storage = FlutterSecureStorage();
-    await storage.delete(key: 'server_url');
-    await storage.delete(key: 'auth_token');
+    await _securityService.deleteSecure('server_url');
+    await _securityService.deleteSecure('auth_token');
     _baseUrl = null;
     _authToken = null;
     _initialized = false;

@@ -107,3 +107,47 @@ func LoginWithQR(token string) (string, error) {
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return jwtToken.SignedString(jwtKey)
 }
+
+func ListUsers() ([]models.User, error) {
+	rows, err := database.DB.Query("SELECT id, username, profile_picture_path, household_id, created_at FROM users")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		err := rows.Scan(&u.ID, &u.Username, &u.ProfilePicturePath, &u.HouseholdID, &u.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func DeleteUser(username string) error {
+	_, err := database.DB.Exec("DELETE FROM users WHERE username = ?", username)
+	return err
+}
+
+func ResetPassword(username, newPassword string) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	res, err := database.DB.Exec("UPDATE users SET password_hash = ? WHERE username = ?", string(hashedPassword), username)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
