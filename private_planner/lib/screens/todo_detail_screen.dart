@@ -1,9 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/providers/database_provider.dart';
-import 'package:private_planner/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
+import 'package:private_planner/providers/app_providers.dart';
 
 class TodoDetailScreen extends HookConsumerWidget {
   final Todo todo;
@@ -17,14 +16,16 @@ class TodoDetailScreen extends HookConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(todo.title),
+        title: Text(todo.title ?? 'Ticket Details'),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete),
             onPressed: () async {
               await db.update(db.todos).replace(
                   todo.copyWith(deleted: true, version: todo.version + 1));
-              if (context.mounted) Navigator.pop(context);
+              if (context.mounted) {
+                Navigator.of(context).pop();
+              }
             },
           ),
         ],
@@ -48,19 +49,74 @@ class TodoDetailScreen extends HookConsumerWidget {
               },
             ),
             const SizedBox(height: 16),
-            Text('Priority: ${todo.priority}',
+            Text('Priorität: ${todo.priority}',
                 style: Theme.of(context).textTheme.bodyLarge),
             const SizedBox(height: 8),
-            Text('Due Date: ${DateFormat('dd.MM.yyyy').format(todo.dueDate)}',
+            Text(
+                'Fällig am: ${todo.dueDate != null ? DateFormat('dd.MM.yyyy').format(todo.dueDate!) : 'Kein Datum'}',
                 style: Theme.of(context).textTheme.bodyLarge),
             const SizedBox(height: 24),
-            Text('Comments', style: Theme.of(context).textTheme.titleLarge),
+            Text('Kommentare', style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
-            const Center(child: Text('Comments logic coming soon...')),
+            ref.watch(watchCommentsProvider(todo.id)).when(
+                  data: (comments) => ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: comments.length,
+                    itemBuilder: (context, index) {
+                      final comment = comments[index];
+                      return ListTile(
+                        title: Text(comment.encryptedBlob), // TODO: Decrypt
+                        subtitle: Text(DateFormat('dd.MM HH:mm')
+                            .format(comment.createdAt)),
+                      );
+                    },
+                  ),
+                  loading: () => const CircularProgressIndicator(),
+                  error: (e, s) => Text('Fehler: $e'),
+                ),
+            TextField(
+              decoration: const InputDecoration(
+                hintText: 'Kommentar hinzufügen...',
+                suffixIcon: Icon(Icons.send),
+              ),
+              onSubmitted: (val) async {
+                if (val.isNotEmpty) {
+                  // TODO: Encrypt val
+                  await db.into(db.comments).insert(CommentsCompanion.insert(
+                        id: const Uuid().v4(),
+                        todoId: todo.id,
+                        userId: 0, // Current user
+                        encryptedBlob: val,
+                      ));
+                }
+              },
+            ),
             const SizedBox(height: 24),
-            Text('Attachments', style: Theme.of(context).textTheme.titleLarge),
+            Text('Anhänge', style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
-            const Center(child: Text('File attachments coming soon...')),
+            ref.watch(watchAttachmentsProvider(todo.id)).when(
+                  data: (attachments) => Wrap(
+                    spacing: 8,
+                    children: attachments
+                        .map((a) => Chip(
+                              label: Text(a.filePath.split('/').last),
+                              onDeleted: () {
+                                // Delete attachment logic
+                              },
+                            ))
+                        .toList(),
+                  ),
+                  loading: () => const CircularProgressIndicator(),
+                  error: (e, s) => Text('Fehler: $e'),
+                ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Datei anhängen'),
+              onPressed: () {
+                // TODO: Implement file picker
+              },
+            ),
           ],
         ),
       ),

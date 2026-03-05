@@ -4,6 +4,7 @@ import 'package:private_planner/data/database.dart';
 import 'package:private_planner/providers/database_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:drift/drift.dart' hide Column;
+import 'package:private_planner/providers/app_providers.dart';
 
 class CategoryManagementScreen extends ConsumerWidget {
   const CategoryManagementScreen({super.key});
@@ -100,7 +101,3 @@ class CategoryManagementScreen extends ConsumerWidget {
     );
   }
 }
-
-final watchCategoriesProvider = StreamProvider((ref) {
-  return ref.watch(databaseProvider).watchAllCategories();
-});

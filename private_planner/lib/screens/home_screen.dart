@@ -2,24 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/core/theme/app_theme.dart';
-import 'package:private_planner/providers/database_provider.dart';
 import 'package:private_planner/screens/category_management_screen.dart';
 import 'package:private_planner/screens/todo_detail_screen.dart';
+import 'package:private_planner/providers/app_providers.dart';
+import 'package:private_planner/screens/search_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:private_planner/services/sync_service.dart';
-import 'package:private_planner/services/auth_service.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final todosStream = ref.watch(watchTodosProvider);
+    final todosStream = ref.watch(watchTodosWithCategoryProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Private Planner'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SearchScreen(),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.category),
             onPressed: () => Navigator.push(
@@ -71,7 +80,8 @@ class HomeScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Open Add Todo Dialog
+          // Open Add Todo Screen
+          // (Implement this navigation)
         },
         child: const Icon(Icons.add),
       ),
@@ -181,7 +191,3 @@ class TodoListTile extends StatelessWidget {
     }
   }
 }
-
-final watchTodosProvider = StreamProvider((ref) {
-  return ref.watch(databaseProvider).watchTodosWithCategory();
-});

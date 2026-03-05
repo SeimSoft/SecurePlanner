@@ -129,6 +129,21 @@ class AppDatabase extends _$AppDatabase {
                     c.syncToServer.equals(true)));
         }))
       .get();
+
+  Stream<List<Comment>> watchComments(String todoId) {
+    return (select(comments)..where((c) => c.todoId.equals(todoId))).watch();
+  }
+
+  Stream<List<Attachment>> watchAttachments(String todoId) {
+    return (select(attachments)..where((a) => a.todoId.equals(todoId))).watch();
+  }
+
+  Stream<List<Todo>> searchTodos(String query) {
+    return (select(todos)
+          ..where((t) =>
+              t.title.like('%$query%') | t.encryptedBlob.like('%$query%')))
+        .watch();
+  }
 }
 
 class ListTodoResult {
