@@ -20,25 +20,34 @@ class TodoDetailScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
     final isDragging = useState(false);
+    final isEditing = useState(false);
     final statusList = ['Backlog', 'In Progress', 'Review', 'Done'];
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !isEmbedded,
         title: GestureDetector(
-          onTap: () {
-            _showEditTitleDialog(context, db);
-          },
+          onTap: isEditing.value
+              ? () {
+                  _showEditTitleDialog(context, db);
+                }
+              : null,
           child: Row(
             children: [
               Expanded(
                   child: Text(todo.title ?? 'Ticket Details',
                       overflow: TextOverflow.ellipsis)),
-              const Icon(Icons.edit, size: 16),
+              if (isEditing.value) const Icon(Icons.edit, size: 16),
             ],
           ),
         ),
         actions: [
+          IconButton(
+            icon: Icon(isEditing.value ? Icons.check : Icons.edit),
+            onPressed: () {
+              isEditing.value = !isEditing.value;
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.delete),
             onPressed: () async {
@@ -86,40 +95,75 @@ class TodoDetailScreen extends HookConsumerWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: todo.status,
-                        decoration: const InputDecoration(labelText: 'Status'),
-                        items: statusList
-                            .map((s) =>
-                                DropdownMenuItem(value: s, child: Text(s)))
-                            .toList(),
-                        onChanged: (val) async {
-                          if (val != null) {
-                            await db.update(db.todos).replace(todo.copyWith(
-                                status: val, version: todo.version + 1));
-                          }
-                        },
-                      ),
+                      child: isEditing.value
+                          ? DropdownButtonFormField<String>(
+                              initialValue: todo.status,
+                              decoration:
+                                  const InputDecoration(labelText: 'Status'),
+                              items: statusList
+                                  .map((s) => DropdownMenuItem(
+                                      value: s, child: Text(s)))
+                                  .toList(),
+                              onChanged: (val) async {
+                                if (val != null) {
+                                  await db.update(db.todos).replace(
+                                      todo.copyWith(
+                                          status: val,
+                                          version: todo.version + 1));
+                                }
+                              },
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Status',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall),
+                                Text(todo.status,
+                                    style:
+                                        Theme.of(context).textTheme.bodyLarge),
+                              ],
+                            ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: todo.priority ?? 0,
-                        decoration:
-                            const InputDecoration(labelText: 'Priorität'),
-                        items: const [
-                          DropdownMenuItem(value: 0, child: Text('Niedrig')),
-                          DropdownMenuItem(value: 1, child: Text('Mittel')),
-                          DropdownMenuItem(value: 2, child: Text('Hoch')),
-                        ],
-                        onChanged: (val) async {
-                          if (val != null) {
-                            await db.update(db.todos).replace(todo.copyWith(
-                                priority: Value(val),
-                                version: todo.version + 1));
-                          }
-                        },
-                      ),
+                      child: isEditing.value
+                          ? DropdownButtonFormField<int>(
+                              initialValue: todo.priority ?? 0,
+                              decoration:
+                                  const InputDecoration(labelText: 'Priorität'),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 0, child: Text('Niedrig')),
+                                DropdownMenuItem(
+                                    value: 1, child: Text('Mittel')),
+                                DropdownMenuItem(value: 2, child: Text('Hoch')),
+                              ],
+                              onChanged: (val) async {
+                                if (val != null) {
+                                  await db.update(db.todos).replace(
+                                      todo.copyWith(
+                                          priority: Value(val),
+                                          version: todo.version + 1));
+                                }
+                              },
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Priorität',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall),
+                                Text(
+                                    todo.priority == 2
+                                        ? 'Hoch'
+                                        : (todo.priority == 1
+                                            ? 'Mittel'
+                                            : 'Niedrig'),
+                                    style:
+                                        Theme.of(context).textTheme.bodyLarge),
+                              ],
+                            ),
                     ),
                   ],
                 ),
@@ -131,23 +175,25 @@ class TodoDetailScreen extends HookConsumerWidget {
                           'Fällig: ${todo.dueDate != null ? DateFormat('dd.MM.yyyy').format(todo.dueDate!) : 'Kein Datum'}',
                           style: Theme.of(context).textTheme.bodyLarge),
                     ),
-                    TextButton.icon(
-                      onPressed: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: todo.dueDate ?? DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate:
-                              DateTime.now().add(const Duration(days: 3650)),
-                        );
-                        if (date != null) {
-                          await db.update(db.todos).replace(todo.copyWith(
-                              dueDate: Value(date), version: todo.version + 1));
-                        }
-                      },
-                      icon: const Icon(Icons.calendar_today),
-                      label: const Text('Ändern'),
-                    ),
+                    if (isEditing.value)
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: todo.dueDate ?? DateTime.now(),
+                            firstDate: DateTime(2000),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 3650)),
+                          );
+                          if (date != null) {
+                            await db.update(db.todos).replace(todo.copyWith(
+                                dueDate: Value(date),
+                                version: todo.version + 1));
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: const Text('Ändern'),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -171,25 +217,26 @@ class TodoDetailScreen extends HookConsumerWidget {
                       loading: () => const CircularProgressIndicator(),
                       error: (e, s) => Text('Fehler: $e'),
                     ),
-                TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'Kommentar hinzufügen...',
-                    suffixIcon: Icon(Icons.send),
+                if (isEditing.value)
+                  TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Kommentar hinzufügen...',
+                      suffixIcon: Icon(Icons.send),
+                    ),
+                    onSubmitted: (val) async {
+                      if (val.isNotEmpty) {
+                        // TODO: Encrypt val
+                        await db
+                            .into(db.comments)
+                            .insert(CommentsCompanion.insert(
+                              id: const Uuid().v4(),
+                              todoId: todo.id,
+                              userId: 0, // Current user
+                              encryptedBlob: val,
+                            ));
+                      }
+                    },
                   ),
-                  onSubmitted: (val) async {
-                    if (val.isNotEmpty) {
-                      // TODO: Encrypt val
-                      await db
-                          .into(db.comments)
-                          .insert(CommentsCompanion.insert(
-                            id: const Uuid().v4(),
-                            todoId: todo.id,
-                            userId: 0, // Current user
-                            encryptedBlob: val,
-                          ));
-                    }
-                  },
-                ),
                 const SizedBox(height: 24),
                 Text('Anhänge', style: Theme.of(context).textTheme.titleLarge),
                 const Divider(),
@@ -209,13 +256,14 @@ class TodoDetailScreen extends HookConsumerWidget {
                       loading: () => const CircularProgressIndicator(),
                       error: (e, s) => Text('Fehler: $e'),
                     ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.attach_file),
-                  label: const Text('Datei anhängen (oder reinziehen)'),
-                  onPressed: () {
-                    // TODO: Implement file picker
-                  },
-                ),
+                if (isEditing.value)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.attach_file),
+                    label: const Text('Datei anhängen (oder reinziehen)'),
+                    onPressed: () {
+                      // TODO: Implement file picker
+                    },
+                  ),
               ],
             ),
           ),
