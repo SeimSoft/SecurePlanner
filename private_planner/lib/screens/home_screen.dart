@@ -6,6 +6,8 @@ import 'package:private_planner/screens/category_management_screen.dart';
 import 'package:private_planner/screens/todo_detail_screen.dart';
 import 'package:private_planner/providers/app_providers.dart';
 import 'package:private_planner/screens/search_screen.dart';
+import 'package:private_planner/widgets/add_todo_dialog.dart';
+import 'package:private_planner/screens/settings_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:private_planner/services/sync_service.dart';
 
@@ -14,7 +16,11 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final todosStream = ref.watch(watchTodosWithCategoryProvider);
+    final selectedCategoryId = ref.watch(selectedCategoryProvider);
+    final todosStream =
+        ref.watch(watchTodosWithCategoryProvider(selectedCategoryId));
+    final categoriesAsync = ref.watch(watchCategoriesProvider);
+    final selectedTodoId = ref.watch(selectedTodoIdProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -42,49 +48,170 @@ class HomeScreen extends ConsumerWidget {
             icon: const Icon(Icons.sync),
             onPressed: () => ref.read(syncServiceProvider).sync(),
           ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SettingsScreen(),
+              ),
+            ),
+          ),
         ],
       ),
-      body: todosStream.when(
-        data: (items) => items.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.task_alt, size: 64, color: Colors.grey.shade300),
-                    const SizedBox(height: 16),
-                    Text('Keine Todos gefunden',
-                        style: TextStyle(color: Colors.grey.shade500)),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TodoDetailScreen(todo: item.todo),
-                      ),
-                    ),
-                    child:
-                        TodoListTile(todo: item.todo, category: item.category),
-                  );
-                },
-              ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, s) => Center(child: Text('Fehler: $e')),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth > 800;
+          final listWidget = _buildList(context, ref, todosStream,
+              categoriesAsync, isDesktop, selectedTodoId);
+
+          if (isDesktop) {
+            return Row(
+              children: [
+                Expanded(flex: 1, child: listWidget),
+                const VerticalDivider(width: 1),
+                Expanded(
+                    flex: 2,
+                    child: _buildDetail(
+                        context, ref, todosStream, selectedTodoId)),
+              ],
+            );
+          } else {
+            return listWidget;
+          }
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Open Add Todo Screen
-          // (Implement this navigation)
+          showDialog(
+            context: context,
+            builder: (context) => const AddTodoDialog(),
+          );
         },
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildList(
+      BuildContext context,
+      WidgetRef ref,
+      AsyncValue<List<ListTodoResult>> todosStream,
+      AsyncValue<List<Category>> categoriesAsync,
+      bool isDesktop,
+      String? selectedTodoId) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: categoriesAsync.when(
+            data: (categories) => DropdownButtonFormField<String?>(
+              initialValue: ref.watch(selectedCategoryProvider),
+              decoration: const InputDecoration(
+                  labelText: 'Kategorie Filter', border: OutlineInputBorder()),
+              items: [
+                const DropdownMenuItem(
+                    value: null, child: Text('Alle Kategorien')),
+                ...categories.map((c) =>
+                    DropdownMenuItem(value: c.id, child: Text(c.name ?? ''))),
+              ],
+              onChanged: (val) {
+                ref.read(selectedCategoryProvider.notifier).state = val;
+              },
+            ),
+            loading: () => const LinearProgressIndicator(),
+            error: (e, s) => const Text('Fehler beim Laden'),
+          ),
+        ),
+        Expanded(
+          child: todosStream.when(
+            data: (items) => items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.task_alt,
+                            size: 64, color: Colors.grey.shade300),
+                        const SizedBox(height: 16),
+                        Text('Keine Todos gefunden',
+                            style: TextStyle(color: Colors.grey.shade500)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final isSelected = selectedTodoId == item.todo.id;
+                      return GestureDetector(
+                        onTap: () {
+                          if (isDesktop) {
+                            ref.read(selectedTodoIdProvider.notifier).state =
+                                item.todo.id;
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    TodoDetailScreen(todo: item.todo),
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          decoration: isDesktop && isSelected
+                              ? BoxDecoration(
+                                  border: Border.all(
+                                      color: Theme.of(context).primaryColor,
+                                      width: 2),
+                                  borderRadius: BorderRadius.circular(12),
+                                )
+                              : null,
+                          child: TodoListTile(
+                              todo: item.todo, category: item.category),
+                        ),
+                      );
+                    },
+                  ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, s) => Center(child: Text('Fehler: $e')),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetail(BuildContext context, WidgetRef ref,
+      AsyncValue<List<ListTodoResult>> todosStream, String? selectedTodoId) {
+    if (selectedTodoId == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.touch_app, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text('Wähle ein Todo aus, um Details zu sehen',
+                style: TextStyle(color: Colors.grey.shade500)),
+          ],
+        ),
+      );
+    }
+
+    return todosStream.when(
+      data: (items) {
+        final selected =
+            items.where((i) => i.todo.id == selectedTodoId).firstOrNull;
+        if (selected == null) {
+          return const Center(child: Text('Todo nicht gefunden oder gelöscht'));
+        }
+        return ClipRect(
+          child: TodoDetailScreen(todo: selected.todo, isEmbedded: true),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, s) => const Center(child: Text('Fehler')),
     );
   }
 }

@@ -99,4 +99,13 @@ class AuthService {
     await storage.delete(key: 'auth_token');
     _authToken = null;
   }
+
+  Future<void> disconnect() async {
+    const storage = FlutterSecureStorage();
+    await storage.delete(key: 'server_url');
+    await storage.delete(key: 'auth_token');
+    _baseUrl = null;
+    _authToken = null;
+    _initialized = false;
+  }
 }

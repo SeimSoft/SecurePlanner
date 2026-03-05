@@ -86,10 +86,26 @@ class AppDatabase extends _$AppDatabase {
 
   // Todos
   Future<List<Todo>> getAllTodos() => select(todos).get();
-  Stream<List<ListTodoResult>> watchTodosWithCategory() {
-    final query = select(todos).join([
+  Stream<List<ListTodoResult>> watchTodosWithCategory({String? categoryId}) {
+    var query = select(todos).join([
       leftOuterJoin(categories, categories.id.equalsExp(todos.categoryId)),
+    ])
+      ..where(todos.deleted.equals(false));
+
+    if (categoryId != null) {
+      query.where(todos.categoryId.equals(categoryId));
+    }
+
+    // Sort by priority (DESC), then due_date (ASC), then updated_at (DESC)
+    query.orderBy([
+      OrderingTerm(expression: todos.priority, mode: OrderingMode.desc),
+      OrderingTerm(
+          expression: todos.dueDate,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last),
+      OrderingTerm(expression: todos.updatedAt, mode: OrderingMode.desc),
     ]);
+
     return query.watch().map((rows) {
       return rows.map((row) {
         return ListTodoResult(
