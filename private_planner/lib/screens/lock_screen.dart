@@ -38,12 +38,71 @@ class LockScreen extends HookConsumerWidget {
                 final authenticated = await security.authenticate();
                 if (authenticated) {
                   ref.read(appLockProvider.notifier).unlock();
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Authentifizierung fehlgeschlagen'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               },
               child: const Text('Jetzt entsperren'),
             ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                _showPasswordDialog(context, ref, security);
+              },
+              child: const Text('Mit Passwort entsperren'),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showPasswordDialog(
+      BuildContext context, WidgetRef ref, SecurityService security) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Master Key eingeben'),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Passwort'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ok = await security.verifyPassword(controller.text);
+              if (ok) {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ref.read(appLockProvider.notifier).unlock();
+                }
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Falsches Passwort'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Entsperren'),
+          ),
+        ],
       ),
     );
   }

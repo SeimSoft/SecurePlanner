@@ -3,6 +3,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 
 final securityServiceProvider =
     Provider<SecurityService>((ref) => SecurityService());
@@ -46,11 +47,20 @@ class SecurityService {
 
   Future<bool> authenticate() async {
     try {
+      final canAuth = await canUseBiometrics();
+      if (!canAuth) {
+        debugPrint('SecurityService: Biometrics not supported/available');
+        return false;
+      }
+
       // Simplest call to ensure compatibility across versions
-      return await _auth.authenticate(
+      final result = await _auth.authenticate(
         localizedReason: 'Bitte authentifiziere dich, um die App zu öffnen',
       );
+      debugPrint('SecurityService: Authentication result: $result');
+      return result;
     } catch (e) {
+      debugPrint('SecurityService: Authentication error: $e');
       return false;
     }
   }
@@ -62,6 +72,30 @@ class SecurityService {
   Future<bool> shouldPromptBiometrics() async {
     final use = await _storage.read(key: _useBiometricsAlias);
     return use == 'true';
+  }
+
+  Future<bool> verifyPassword(String password) async {
+    try {
+      final pbkdf2 = Pbkdf2(
+        macAlgorithm: Hmac.sha256(),
+        iterations: 10000,
+        bits: 256,
+      );
+      final salt = [1, 2, 3, 4, 5, 6, 7, 8];
+      final secretKey = await pbkdf2.deriveKeyFromPassword(
+        password: password,
+        nonce: salt,
+      );
+      final keyBytes = await secretKey.extractBytes();
+
+      final storedKeyBase64 = await _storage.read(key: _masterKeyAlias);
+      if (storedKeyBase64 == null) return false;
+
+      final storedKey = base64Decode(storedKeyBase64);
+      return listEquals(keyBytes, storedKey);
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<List<int>?> getMasterKey() async {
