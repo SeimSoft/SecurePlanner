@@ -130,7 +130,7 @@ class SyncService {
     if (toPush.isNotEmpty) {
       await _ref
           .read(dioProvider)
-          .post('${_auth.baseUrl}/todos/sync', data: toPush);
+          .post('${_auth.baseUrl}/todos/sync', data: toPush); }
     }
   }
 
