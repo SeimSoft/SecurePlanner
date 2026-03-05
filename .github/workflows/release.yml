@@ -94,7 +94,7 @@ jobs:
         if: matrix.target == 'macos' || matrix.target == 'macos-intel'
         run: |
           cd build/macos/Build/Products/Release
-          zip -r ../../../../private_planner_macos_${{ matrix.target }}.zip Private\ Planner.app
+          zip -r ../../../../private_planner_macos_${{ matrix.target }}.zip *.app
         working-directory: private_planner
 
       - name: Upload Release Assets
