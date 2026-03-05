@@ -1,0 +1,314 @@
+package main
+
+import (
+	"net/http"
+	"private_planner_backend/internal/auth"
+	"private_planner_backend/internal/database"
+	"private_planner_backend/internal/models"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	database.InitDB("./planner.db")
+
+	r := gin.Default()
+
+	// Auth routes
+	r.POST("/register", func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := auth.Register(req.Username, req.Password); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not register user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User registered successfully"})
+	})
+
+	r.POST("/login", func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		token, err := auth.Login(req.Username, req.Password)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": token})
+	})
+
+	// Protected routes
+	protected := r.Group("/api")
+	protected.Use(authMiddleware())
+	{
+		protected.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "user_id": c.MustGet("user_id")})
+		})
+
+		// Sync: Get all todos for user
+		protected.GET("/todos", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			rows, err := database.DB.Query("SELECT id, user_id, owner_id, title, priority, status, time_estimate, due_date, encrypted_blob, version, deleted, updated_at FROM todos WHERE user_id = ? OR owner_id = ?", userID, userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			defer rows.Close()
+
+			var todos []models.Todo
+			for rows.Next() {
+				var t models.Todo
+				err := rows.Scan(&t.ID, &t.UserID, &t.OwnerID, &t.Title, &t.Priority, &t.Status, &t.TimeEstimate, &t.DueDate, &t.EncryptedBlob, &t.Version, &t.Deleted, &t.UpdatedAt)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				todos = append(todos, t)
+			}
+			c.JSON(http.StatusOK, todos)
+		})
+
+		// Sync: Push todos
+		protected.POST("/todos/sync", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			var incomingTodos []models.Todo
+			if err := c.ShouldBindJSON(&incomingTodos); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			tx, err := database.DB.Begin()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			for _, t := range incomingTodos {
+				_, err := tx.Exec(`
+					INSERT INTO todos (id, user_id, owner_id, title, priority, status, time_estimate, due_date, encrypted_blob, version, deleted, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT(id) DO UPDATE SET
+						owner_id = excluded.owner_id,
+						title = excluded.title,
+						priority = excluded.priority,
+						status = excluded.status,
+						time_estimate = excluded.time_estimate,
+						due_date = excluded.due_date,
+						encrypted_blob = excluded.encrypted_blob,
+						version = excluded.version,
+						deleted = excluded.deleted,
+						updated_at = CURRENT_TIMESTAMP
+					WHERE excluded.version > todos.version`,
+					t.ID, userID, t.OwnerID, t.Title, t.Priority, t.Status, t.TimeEstimate, t.DueDate, t.EncryptedBlob, t.Version, t.Deleted, time.Now())
+				if err != nil {
+					tx.Rollback()
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "Sync successful"})
+		})
+
+		// Comments Sync
+		protected.GET("/comments", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			rows, err := database.DB.Query("SELECT id, todo_id, user_id, encrypted_blob, created_at FROM comments WHERE todo_id IN (SELECT id FROM todos WHERE user_id = ? OR owner_id = ?)", userID, userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			defer rows.Close()
+
+			var comments []models.Comment
+			for rows.Next() {
+				var cm models.Comment
+				err := rows.Scan(&cm.ID, &cm.TodoID, &cm.UserID, &cm.EncryptedBlob, &cm.CreatedAt)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				comments = append(comments, cm)
+			}
+			c.JSON(http.StatusOK, comments)
+		})
+
+		protected.POST("/comments", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			var cm models.Comment
+			if err := c.ShouldBindJSON(&cm); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			_, err := database.DB.Exec("INSERT INTO comments (id, todo_id, user_id, encrypted_blob) VALUES (?, ?, ?, ?)", cm.ID, cm.TodoID, userID, cm.EncryptedBlob)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Comment added"})
+		})
+
+		// File Upload
+		protected.POST("/todos/:id/upload", func(c *gin.Context) {
+			todoID := c.Param("id")
+			userID := c.MustGet("user_id").(int)
+			file, err := c.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			encryptedName := c.PostForm("encrypted_name")
+			attachmentID := c.PostForm("attachment_id")
+
+			filePath := "uploads/" + attachmentID + "_" + file.Filename
+			if err := c.SaveUploadedFile(file, filePath); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			_, err = database.DB.Exec("INSERT INTO attachments (id, todo_id, user_id, file_path, encrypted_name) VALUES (?, ?, ?, ?, ?)", attachmentID, todoID, userID, filePath, encryptedName)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "File uploaded successfully"})
+		})
+
+		protected.GET("/attachments/:id", func(c *gin.Context) {
+			attachmentID := c.Param("id")
+			var filePath string
+			err := database.DB.QueryRow("SELECT file_path FROM attachments WHERE id = ?", attachmentID).Scan(&filePath)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Attachment not found"})
+				return
+			}
+			c.File(filePath)
+		})
+
+		// Categories Sync
+		protected.GET("/categories", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			rows, err := database.DB.Query("SELECT id, user_id, encrypted_name, created_at FROM categories WHERE user_id = ? OR id IN (SELECT category_id FROM category_shares WHERE shared_with_user_id = ?)", userID, userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			defer rows.Close()
+
+			var categories []models.Category
+			for rows.Next() {
+				var cat models.Category
+				err := rows.Scan(&cat.ID, &cat.UserID, &cat.EncryptedName, &cat.CreatedAt)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				categories = append(categories, cat)
+			}
+			c.JSON(http.StatusOK, categories)
+		})
+
+		protected.POST("/categories", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			var cat models.Category
+			if err := c.ShouldBindJSON(&cat); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			_, err := database.DB.Exec("INSERT INTO categories (id, user_id, encrypted_name) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET encrypted_name = excluded.encrypted_name", cat.ID, userID, cat.EncryptedName)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Category saved"})
+		})
+
+		// Sharing Sync
+		protected.GET("/shares", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			rows, err := database.DB.Query("SELECT id, category_id, user_id, shared_with_user_id, permission FROM category_shares WHERE user_id = ?", userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			defer rows.Close()
+
+			var shares []models.CategoryShare
+			for rows.Next() {
+				var s models.CategoryShare
+				err := rows.Scan(&s.ID, &s.CategoryID, &s.UserID, &s.SharedWithUserID, &s.Permission)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				shares = append(shares, s)
+			}
+			c.JSON(http.StatusOK, shares)
+		})
+
+		protected.POST("/shares", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			var s models.CategoryShare
+			if err := c.ShouldBindJSON(&s); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			_, err := database.DB.Exec("INSERT INTO category_shares (id, category_id, user_id, shared_with_user_id, permission) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET permission = excluded.permission", s.ID, s.CategoryID, userID, s.SharedWithUserID, s.Permission)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Share saved"})
+		})
+	}
+
+	r.Run(":8080")
+}
+
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+			c.Abort()
+			return
+		}
+
+		claims, err := auth.VerifyToken(parts[1])
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Next()
+	}
+}
