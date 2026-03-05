@@ -1,4 +1,4 @@
-name: Flutter Build & Release
+name: Multi-Platform Release
 
 on:
   push:
@@ -7,15 +7,33 @@ on:
 
 jobs:
   build:
-    name: Build & Release APK
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [apk, windows, linux, macos, macos-intel]
+        include:
+          - target: apk
+            os: ubuntu-latest
+          - target: windows
+            os: windows-latest
+          - target: linux
+            os: ubuntu-latest
+          - target: macos
+            os: macos-latest
+          - target: macos-intel
+            os: macos-13 # Intel runner
+
     permissions:
       contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Java
+        if: matrix.target == 'apk'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -27,6 +45,12 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Install Linux Dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev libgcrypt20-dev pkg-config
+
       - name: Get dependencies
         run: flutter pub get
         working-directory: private_planner
@@ -36,16 +60,53 @@ jobs:
         working-directory: private_planner
 
       - name: Build APK
+        if: matrix.target == 'apk'
         run: flutter build apk --release
         working-directory: private_planner
 
-      - name: Create GitHub Release
+      - name: Build Windows
+        if: matrix.target == 'windows'
+        run: flutter build windows --release
+        working-directory: private_planner
+
+      - name: Build Linux
+        if: matrix.target == 'linux'
+        run: flutter build linux --release
+        working-directory: private_planner
+
+      - name: Build macOS
+        if: matrix.target == 'macos' || matrix.target == 'macos-intel'
+        run: flutter build macos --release
+        working-directory: private_planner
+
+      - name: Package Windows
+        if: matrix.target == 'windows'
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\private_planner_windows.zip
+        working-directory: private_planner
+        shell: pwsh
+
+      - name: Package Linux
+        if: matrix.target == 'linux'
+        run: tar -czf build/linux/x64/release/private_planner_linux.tar.gz -C build/linux/x64/release/bundle .
+        working-directory: private_planner
+
+      - name: Package macOS
+        if: matrix.target == 'macos' || matrix.target == 'macos-intel'
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../private_planner_macos_${{ matrix.target }}.zip Private\ Planner.app
+        working-directory: private_planner
+
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: private_planner/build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            private_planner/build/app/outputs/flutter-apk/app-release.apk
+            private_planner/build/windows/private_planner_windows.zip
+            private_planner/build/linux/x64/release/private_planner_linux.tar.gz
+            private_planner/build/private_planner_macos_*.zip
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
