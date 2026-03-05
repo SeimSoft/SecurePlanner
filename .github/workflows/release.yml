@@ -23,7 +23,7 @@ jobs:
           - target: macos
             os: macos-latest
           - target: macos-intel
-            os: macos-13 # Intel runner
+            os: macos-26 # Intel runner
 
     permissions:
       contents: write
