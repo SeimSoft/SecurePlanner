@@ -111,15 +111,17 @@ class HomeScreen extends ConsumerWidget {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) => const AddTodoDialog(),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: isCompactHeight || ref.watch(isDraggingTodoProvider)
+          ? null
+          : FloatingActionButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const AddTodoDialog(),
+                );
+              },
+              child: const Icon(Icons.add),
+            ),
     );
   }
 
@@ -297,10 +299,11 @@ class HomeScreen extends ConsumerWidget {
       borderRadius: BorderRadius.circular(16),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Container(
-        height: 120,
         padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        child: Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 16,
+          runSpacing: 16,
           children: List.generate(4, (index) {
             final status = statuses[index];
             return DragTarget<Todo>(
@@ -314,6 +317,7 @@ class HomeScreen extends ConsumerWidget {
                 final isHovered = candidateData.isNotEmpty;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
+                  height: 80,
                   width: isHovered ? 140 : 120,
                   decoration: BoxDecoration(
                     color: isHovered
@@ -327,12 +331,13 @@ class HomeScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(icons[index],
-                          color: colors[index], size: isHovered ? 40 : 32),
+                          color: colors[index], size: isHovered ? 32 : 24),
                       const SizedBox(height: 8),
                       Text(status,
                           style: TextStyle(
                               color: colors[index],
-                              fontWeight: FontWeight.bold)),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12)),
                     ],
                   ),
                 );
