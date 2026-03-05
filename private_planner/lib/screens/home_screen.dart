@@ -24,64 +24,67 @@ class HomeScreen extends ConsumerWidget {
         ref.watch(watchTodosWithCategoryProvider(selectedCategoryId));
     final categoriesAsync = ref.watch(watchCategoriesProvider);
     final selectedTodoId = ref.watch(selectedTodoIdProvider);
+    final isCompactHeight = MediaQuery.sizeOf(context).height < 500;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Private Planner'),
-        actions: [
-          Row(
-            children: [
-              const Text('Show Done', style: TextStyle(fontSize: 14)),
-              Checkbox(
-                value: ref.watch(showDoneTodosProvider),
-                onChanged: (val) {
-                  if (val != null) {
-                    ref.read(showDoneTodosProvider.notifier).state = val;
-                  }
-                },
-              ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SearchScreen(),
-              ),
+      appBar: isCompactHeight
+          ? null
+          : AppBar(
+              title: const Text('Private Planner'),
+              actions: [
+                Row(
+                  children: [
+                    const Text('Show Done', style: TextStyle(fontSize: 14)),
+                    Checkbox(
+                      value: ref.watch(showDoneTodosProvider),
+                      onChanged: (val) {
+                        if (val != null) {
+                          ref.read(showDoneTodosProvider.notifier).state = val;
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SearchScreen(),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.category),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CategoryManagementScreen(),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.sync),
+                  onPressed: () => ref.read(syncServiceProvider).sync(),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.category),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const CategoryManagementScreen(),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () => ref.read(syncServiceProvider).sync(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SettingsScreen(),
-              ),
-            ),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
               final isDesktop = constraints.maxWidth > 800;
               final listWidget = _buildList(context, ref, todosStream,
-                  categoriesAsync, isDesktop, selectedTodoId);
+                  categoriesAsync, isDesktop, selectedTodoId, isCompactHeight);
 
               if (isDesktop) {
                 return Row(
@@ -126,30 +129,33 @@ class HomeScreen extends ConsumerWidget {
       AsyncValue<List<ListTodoResult>> todosStream,
       AsyncValue<List<Category>> categoriesAsync,
       bool isDesktop,
-      String? selectedTodoId) {
+      String? selectedTodoId,
+      bool isCompactHeight) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: categoriesAsync.when(
-            data: (categories) => DropdownButtonFormField<String?>(
-              initialValue: ref.watch(selectedCategoryProvider),
-              decoration: const InputDecoration(
-                  labelText: 'Kategorie Filter', border: OutlineInputBorder()),
-              items: [
-                const DropdownMenuItem(
-                    value: null, child: Text('Alle Kategorien')),
-                ...categories.map((c) =>
-                    DropdownMenuItem(value: c.id, child: Text(c.name ?? ''))),
-              ],
-              onChanged: (val) {
-                ref.read(selectedCategoryProvider.notifier).state = val;
-              },
+        if (!isCompactHeight)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: categoriesAsync.when(
+              data: (categories) => DropdownButtonFormField<String?>(
+                initialValue: ref.watch(selectedCategoryProvider),
+                decoration: const InputDecoration(
+                    labelText: 'Kategorie Filter',
+                    border: OutlineInputBorder()),
+                items: [
+                  const DropdownMenuItem(
+                      value: null, child: Text('Alle Kategorien')),
+                  ...categories.map((c) =>
+                      DropdownMenuItem(value: c.id, child: Text(c.name ?? ''))),
+                ],
+                onChanged: (val) {
+                  ref.read(selectedCategoryProvider.notifier).state = val;
+                },
+              ),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, s) => const Text('Fehler beim Laden'),
             ),
-            loading: () => const LinearProgressIndicator(),
-            error: (e, s) => const Text('Fehler beim Laden'),
           ),
-        ),
         Expanded(
           child: todosStream.when(
             data: (items) => items.isEmpty
