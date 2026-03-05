@@ -20,6 +20,7 @@ class _AddTodoDialogState extends ConsumerState<AddTodoDialog> {
   int _priority = 0;
   DateTime? _dueDate;
   String? _selectedCategoryId;
+  int? _selectedAssigneeId;
 
   @override
   void dispose() {
@@ -31,6 +32,7 @@ class _AddTodoDialogState extends ConsumerState<AddTodoDialog> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(watchCategoriesProvider);
+    final usersAsync = ref.watch(watchUsersProvider);
 
     return AlertDialog(
       title: const Text('Neues Todo'),
@@ -105,12 +107,48 @@ class _AddTodoDialogState extends ConsumerState<AddTodoDialog> {
                   ),
                 ],
                 onChanged: (val) {
-                  setState(() => _selectedCategoryId = val);
+                  setState(() {
+                    _selectedCategoryId = val;
+                    // Reset assignee if category is not shared
+                    final category = categories.firstWhere((c) => c.id == val,
+                        orElse: () => categories.first);
+                    if (val == null || !category.sharedWithHousehold) {
+                      _selectedAssigneeId = null;
+                    }
+                  });
                 },
               ),
               loading: () => const CircularProgressIndicator(),
               error: (e, s) => const Text('Fehler beim Laden der Kategorien'),
             ),
+            const SizedBox(height: 16),
+            if (_selectedCategoryId != null && categoriesAsync.hasValue) ...[
+              Builder(builder: (context) {
+                final category = categoriesAsync.value!.firstWhere(
+                    (c) => c.id == _selectedCategoryId,
+                    orElse: () => categoriesAsync.value!.first);
+                if (category.sharedWithHousehold &&
+                    usersAsync.hasValue &&
+                    usersAsync.value!.isNotEmpty) {
+                  return DropdownButtonFormField<int?>(
+                    initialValue: _selectedAssigneeId,
+                    decoration: const InputDecoration(labelText: 'Zuweisen an'),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('Niemand')),
+                      ...usersAsync.value!.map(
+                        (u) => DropdownMenuItem(
+                            value: u.id, child: Text(u.username)),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      setState(() => _selectedAssigneeId = val);
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+            ],
           ],
         ),
       ),
@@ -131,6 +169,7 @@ class _AddTodoDialogState extends ConsumerState<AddTodoDialog> {
               timeEstimate: Value(_timeEstimateController.text.trim()),
               dueDate: Value(_dueDate),
               categoryId: Value(_selectedCategoryId),
+              ownerId: Value(_selectedAssigneeId),
               encryptedBlob:
                   'local', // Placeholder, will be overwritten on sync if needed
               status: const Value('Backlog'),

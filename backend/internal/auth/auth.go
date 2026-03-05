@@ -67,7 +67,13 @@ func VerifyToken(tokenString string) (*Claims, error) {
 func GenerateQRToken(userID int) (string, error) {
 	// Generate a secure random token
 	token := time.Now().String() // Placeholder, use better random in production
-	_, err := database.DB.Exec("INSERT INTO qr_tokens (token, user_id) VALUES (?, ?)", token, userID)
+	_, err := database.DB.Exec("INSERT INTO qr_tokens (token, user_id, type) VALUES (?, ?, 'login')", token, userID)
+	return token, err
+}
+
+func GenerateHouseholdQRToken(userID int) (string, error) {
+	token := time.Now().String() + "_household" // Placeholder
+	_, err := database.DB.Exec("INSERT INTO qr_tokens (token, user_id, type) VALUES (?, ?, 'household_join')", token, userID)
 	return token, err
 }
 

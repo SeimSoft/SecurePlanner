@@ -2,8 +2,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/providers/database_provider.dart';
 
-final watchCategoriesProvider = StreamProvider((ref) {
-  return ref.watch(databaseProvider).watchAllCategories();
+final watchCategoriesProvider = StreamProvider<List<Category>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchAllCategories();
+});
+
+final watchUsersProvider = StreamProvider<List<User>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchUsers();
 });
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);

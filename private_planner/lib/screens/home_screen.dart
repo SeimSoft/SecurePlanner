@@ -1,4 +1,3 @@
-```dart
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -14,14 +13,31 @@ import 'package:intl/intl.dart';
 import 'package:private_planner/services/sync_service.dart';
 import 'package:private_planner/providers/database_provider.dart';
 import 'package:private_planner/services/update_service.dart';
+import 'dart:math' as math;
+import 'package:drift/drift.dart' as drift;
+import 'package:confetti/confetti.dart';
 
 final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends HookConsumerWidget {
   const HomeScreen({super.key});
+
+  Color _parseColor(String? colorStr) {
+    if (colorStr == null) return Colors.grey;
+    try {
+      return Color(int.parse(colorStr.replaceAll('#', '0xFF')));
+    } catch (e) {
+      return Colors.grey;
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final confettiController = useMemoized(
+        () => ConfettiController(duration: const Duration(seconds: 1)));
+    useEffect(() {
+      return confettiController.dispose;
+    }, const []);
     final selectedCategoryId = ref.watch(selectedCategoryProvider);
     final todosStream =
         ref.watch(watchTodosWithCategoryProvider(selectedCategoryId));
@@ -37,18 +53,17 @@ class HomeScreen extends ConsumerWidget {
           : AppBar(
               title: const Text('Private Planner'),
               actions: [
-                Row(
-                  children: [
-                    const Text('Show Done', style: TextStyle(fontSize: 14)),
-                    Checkbox(
-                      value: ref.watch(showDoneTodosProvider),
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref.read(showDoneTodosProvider.notifier).state = val;
-                        }
-                      },
-                    ),
-                  ],
+                IconButton(
+                  icon: Icon(
+                    ref.watch(showDoneTodosProvider)
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  tooltip: 'Show Done',
+                  onPressed: () {
+                    final current = ref.read(showDoneTodosProvider);
+                    ref.read(showDoneTodosProvider.notifier).state = !current;
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.search),
@@ -67,10 +82,6 @@ class HomeScreen extends ConsumerWidget {
                       builder: (context) => const CategoryManagementScreen(),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.sync),
-                  onPressed: () => ref.read(syncServiceProvider).sync(),
                 ),
                 IconButton(
                   icon: const Icon(Icons.settings),
@@ -165,8 +176,27 @@ class HomeScreen extends ConsumerWidget {
               left: 16,
               right: 16,
               bottom: 32,
-              child: _buildDragBaskets(context, ref),
+              child: _buildDragBaskets(context, ref, confettiController),
             ),
+          if (ref.watch(isDraggingTodoProvider))
+            Positioned(
+              right: 16,
+              top:
+                  MediaQuery.of(context).size.height * 0.2, // Center vertically
+              child: _buildCategoryBaskets(context, ref, categoriesAsync),
+            ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              maxBlastForce: 20,
+              minBlastForce: 8,
+              gravity: 0.2,
+            ),
+          ),
         ],
       ),
       floatingActionButton: isCompactHeight || ref.watch(isDraggingTodoProvider)
@@ -267,22 +297,28 @@ class HomeScreen extends ConsumerWidget {
             (i) => i.todo.status != 'In Progress' && i.todo.status != 'Review')
         .toList();
 
-    return CustomScrollView(
-      slivers: [
-        if (inProgress.isNotEmpty) ...[
-          _buildSliverHeader('In Progress', context),
-          _buildSliverList(inProgress, isDesktop, selectedTodoId, ref),
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.read(syncServiceProvider).sync();
+      },
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (inProgress.isNotEmpty) ...[
+            _buildSliverHeader('In Progress', context),
+            _buildSliverList(inProgress, isDesktop, selectedTodoId, ref),
+          ],
+          if (other.isNotEmpty) ...[
+            if (inProgress.isNotEmpty) _buildSliverHeader('Todos', context),
+            _buildSliverList(other, isDesktop, selectedTodoId, ref),
+          ],
+          if (inReview.isNotEmpty) ...[
+            _buildSliverHeader('In Review', context),
+            _buildSliverList(inReview, isDesktop, selectedTodoId, ref),
+          ],
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
-        if (other.isNotEmpty) ...[
-          if (inProgress.isNotEmpty) _buildSliverHeader('Todos', context),
-          _buildSliverList(other, isDesktop, selectedTodoId, ref),
-        ],
-        if (inReview.isNotEmpty) ...[
-          _buildSliverHeader('In Review', context),
-          _buildSliverList(inReview, isDesktop, selectedTodoId, ref),
-        ],
-        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-      ],
+      ),
     );
   }
 
@@ -417,7 +453,8 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDragBaskets(BuildContext context, WidgetRef ref) {
+  Widget _buildDragBaskets(BuildContext context, WidgetRef ref,
+      ConfettiController confettiController) {
     final statuses = ['Backlog', 'In Progress', 'Review', 'Done'];
     final colors = [Colors.grey, Colors.blue, Colors.orange, Colors.green];
     final icons = [
@@ -445,6 +482,9 @@ class HomeScreen extends ConsumerWidget {
                 final db = ref.read(databaseProvider);
                 await db.update(db.todos).replace(
                     todo.copyWith(status: status, version: todo.version + 1));
+                if (status == 'Done') {
+                  confettiController.play();
+                }
               },
               builder: (context, candidateData, rejectedData) {
                 final isHovered = candidateData.isNotEmpty;
@@ -454,7 +494,7 @@ class HomeScreen extends ConsumerWidget {
                   width: isHovered ? 140 : 120,
                   decoration: BoxDecoration(
                     color: isHovered
-                        ? colors[index].withOpacity(0.2)
+                        ? colors[index].withValues(alpha: 0.2)
                         : Theme.of(context).colorScheme.surface,
                     border: Border.all(
                         color: colors[index], width: isHovered ? 3 : 1),
@@ -479,6 +519,81 @@ class HomeScreen extends ConsumerWidget {
           }),
         ),
       ),
+    );
+  }
+
+  Widget _buildCategoryBaskets(BuildContext context, WidgetRef ref,
+      AsyncValue<List<Category>> categoriesAsync) {
+    return categoriesAsync.when(
+      data: (categories) {
+        final topCategories = categories.take(3).toList();
+        if (topCategories.isEmpty) return const SizedBox.shrink();
+
+        return Material(
+          elevation: 12,
+          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize:
+                  MainAxisSize.min, // prevent column from expanding infinitely
+              children: topCategories.map((category) {
+                final catColor = _parseColor(category.color);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: DragTarget<Todo>(
+                    onAcceptWithDetails: (details) async {
+                      final todo = details.data;
+                      final db = ref.read(databaseProvider);
+                      await db.update(db.todos).replace(todo.copyWith(
+                          categoryId: drift.Value(category.id),
+                          version: todo.version + 1));
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      final isHovered = candidateData.isNotEmpty;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: isHovered ? 70 : 60,
+                        height: isHovered ? 70 : 60,
+                        decoration: BoxDecoration(
+                          color: isHovered
+                              ? catColor.withValues(alpha: 0.2)
+                              : Theme.of(context).colorScheme.surface,
+                          border: Border.all(
+                              color: catColor, width: isHovered ? 3 : 1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.label,
+                                color: catColor, size: isHovered ? 24 : 16),
+                            const SizedBox(height: 4),
+                            Text(
+                              category.name?.substring(
+                                      0, math.min(3, category.name!.length)) ??
+                                  '',
+                              style: TextStyle(
+                                  color: catColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
@@ -537,12 +652,12 @@ class TodoListTile extends HookWidget {
             ? BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.red.withOpacity(pulseOpacity),
+                  color: Colors.red.withValues(alpha: pulseOpacity),
                   width: 2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.red.withOpacity(pulseOpacity * 0.2),
+                    color: Colors.red.withValues(alpha: pulseOpacity * 0.2),
                     blurRadius: 8,
                     spreadRadius: 2,
                   ),
@@ -582,7 +697,7 @@ class TodoListTile extends HookWidget {
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: _parseColor(category!.color)
-                                  .withOpacity(0.1),
+                                  .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(

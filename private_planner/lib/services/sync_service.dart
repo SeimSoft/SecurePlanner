@@ -25,9 +25,24 @@ class SyncService {
     final baseUrl = _auth.baseUrl;
     if (baseUrl == null) return;
 
+    await _syncHouseholdMembers();
     await _syncCategories();
     await _syncTodos();
     await _syncComments();
+  }
+
+  Future<void> _syncHouseholdMembers() async {
+    final response = await _dio.get('${_auth.baseUrl}/household/members');
+    if (response.statusCode == 200) {
+      final members = response.data as List;
+      for (var member in members) {
+        await _db.into(_db.users).insertOnConflictUpdate(User(
+              id: member['id'],
+              username: member['username'],
+              profilePicturePath: member['profile_picture_path'],
+            ));
+      }
+    }
   }
 
   Future<void> _syncCategories() async {
@@ -37,18 +52,30 @@ class SyncService {
     for (var cat in toSync) {
       await _dio.post(
         '${_auth.baseUrl}/categories',
-        data: cat.toJson(),
+        data: {
+          'id': cat.id,
+          'user_id': cat.ownerId ?? 0,
+          'encrypted_name': cat.encryptedBlob ?? '',
+          'shared_with_household': cat.sharedWithHousehold,
+        },
       );
     }
 
     final response = await _dio.get('${_auth.baseUrl}/categories');
     if (response.statusCode == 200) {
-      final remoteCats =
-          (response.data as List).map((e) => Category.fromJson(e)).toList();
-      for (var remote in remoteCats) {
-        await _db
-            .into(_db.categories)
-            .insertOnConflictUpdate(remote.copyWith(syncToServer: true));
+      for (var remote in response.data as List) {
+        await _db.into(_db.categories).insertOnConflictUpdate(Category(
+              id: remote['id'],
+              ownerId: remote['user_id'],
+              encryptedBlob: remote['encrypted_name'],
+              sharedWithHousehold: remote['shared_with_household'] ?? false,
+              syncToServer: true,
+              isShared: remote['shared_with_household'] ?? false,
+              deleted: false,
+              version: 1,
+              updatedAt:
+                  DateTime.tryParse(remote['created_at']) ?? DateTime.now(),
+            ));
       }
     }
   }

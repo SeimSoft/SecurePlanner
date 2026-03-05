@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter/foundation.dart';
 
 part 'update_service.g.dart';
 
@@ -117,11 +118,11 @@ class UpdateService extends _$UpdateService {
       try {
         OtaUpdate().execute(url, destinationFilename: 'app-update.apk').listen(
           (OtaEvent event) {
-            print('Update progress: ${event.status}');
+            debugPrint('Update progress: ${event.status}');
           },
         );
       } catch (e) {
-        print('Failed to update: $e');
+        debugPrint('Failed to update: $e');
       }
     } else {
       if (await canLaunchUrl(Uri.parse(url))) {

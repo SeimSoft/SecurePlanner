@@ -22,6 +22,19 @@ class TodoDetailScreen extends HookConsumerWidget {
     final isDragging = useState(false);
     final isEditing = useState(false);
     final statusList = ['Backlog', 'In Progress', 'Review', 'Done'];
+    final usersAsync = ref.watch(watchUsersProvider);
+    final categoriesAsync = ref.watch(watchCategoriesProvider);
+
+    final category = categoriesAsync.value?.firstWhere(
+      (c) => c.id == todo.categoryId,
+      orElse: () => categoriesAsync.value!.first,
+    );
+    final isShared = category?.sharedWithHousehold == true;
+    final assigneeName = todo.ownerId == null
+        ? 'Niemand'
+        : (usersAsync.value?.any((u) => u.id == todo.ownerId) == true
+            ? usersAsync.value!.firstWhere((u) => u.id == todo.ownerId).username
+            : 'Unbekannt');
 
     return Scaffold(
       appBar: AppBar(
@@ -167,6 +180,48 @@ class TodoDetailScreen extends HookConsumerWidget {
                     ),
                   ],
                 ),
+                if (isShared && usersAsync.hasValue) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: isEditing.value
+                            ? DropdownButtonFormField<int?>(
+                                initialValue: todo.ownerId,
+                                decoration: const InputDecoration(
+                                    labelText: 'Zuweisen an'),
+                                items: [
+                                  const DropdownMenuItem(
+                                      value: null, child: Text('Niemand')),
+                                  ...usersAsync.value!.map((u) =>
+                                      DropdownMenuItem(
+                                          value: u.id,
+                                          child: Text(u.username))),
+                                ],
+                                onChanged: (val) async {
+                                  await db.update(db.todos).replace(
+                                      todo.copyWith(
+                                          ownerId: Value(val),
+                                          version: todo.version + 1));
+                                },
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Zugeordnet an',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall),
+                                  Text(assigneeName,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyLarge),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Row(
                   children: [
