@@ -1,17 +1,26 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"private_planner_backend/internal/auth"
 	"private_planner_backend/internal/database"
 	"private_planner_backend/internal/models"
+	"private_planner_backend/internal/update"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
+const Version = "v0.1.1"
+
 func main() {
+	// Auto-update check
+	if err := update.CheckAndApplyUpdate(Version); err != nil {
+		fmt.Printf("Update check failed: %v\n", err)
+	}
+
 	database.InitDB("./planner.db")
 
 	r := gin.Default()
@@ -118,6 +127,53 @@ func main() {
 				todos = append(todos, t)
 			}
 			c.JSON(http.StatusOK, todos)
+		})
+
+		// Sync: Push todos
+		protected.POST("/todos/sync", func(c *gin.Context) {
+			userID := c.MustGet("user_id").(int)
+			var incomingTodos []models.Todo
+			if err := c.ShouldBindJSON(&incomingTodos); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			tx, err := database.DB.Begin()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			for _, t := range incomingTodos {
+				_, err := tx.Exec(`
+					INSERT INTO todos (id, user_id, owner_id, title, priority, status, time_estimate, due_date, encrypted_blob, version, deleted, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT(id) DO UPDATE SET
+						owner_id = excluded.owner_id,
+						title = excluded.title,
+						priority = excluded.priority,
+						status = excluded.status,
+						time_estimate = excluded.time_estimate,
+						due_date = excluded.due_date,
+						encrypted_blob = excluded.encrypted_blob,
+						version = excluded.version,
+						deleted = excluded.deleted,
+						updated_at = CURRENT_TIMESTAMP
+					WHERE excluded.version > todos.version`,
+					t.ID, userID, t.OwnerID, t.Title, t.Priority, t.Status, t.TimeEstimate, t.DueDate, t.EncryptedBlob, t.Version, t.Deleted, time.Now())
+				if err != nil {
+					tx.Rollback()
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "Sync successful"})
 		})
 
 		// Sync: Push todos
