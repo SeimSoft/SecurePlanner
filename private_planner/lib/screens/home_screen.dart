@@ -1,5 +1,7 @@
+```dart
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/core/theme/app_theme.dart';
 import 'package:private_planner/screens/category_management_screen.dart';
@@ -11,6 +13,7 @@ import 'package:private_planner/screens/settings_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:private_planner/services/sync_service.dart';
 import 'package:private_planner/providers/database_provider.dart';
+import 'package:private_planner/services/update_service.dart';
 
 final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
 
@@ -25,6 +28,8 @@ class HomeScreen extends ConsumerWidget {
     final categoriesAsync = ref.watch(watchCategoriesProvider);
     final selectedTodoId = ref.watch(selectedTodoIdProvider);
     final isCompactHeight = MediaQuery.sizeOf(context).height < 500;
+
+    final updateAsync = ref.watch(updateServiceProvider);
 
     return Scaffold(
       appBar: isCompactHeight
@@ -80,27 +85,80 @@ class HomeScreen extends ConsumerWidget {
             ),
       body: Stack(
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktop = constraints.maxWidth > 800;
-              final listWidget = _buildList(context, ref, todosStream,
-                  categoriesAsync, isDesktop, selectedTodoId, isCompactHeight);
+          Column(
+            children: [
+              updateAsync.when(
+                data: (info) {
+                  if (info == null || info.isIgnored) {
+                    return const SizedBox.shrink();
+                  }
+                  return Container(
+                    color: Theme.of(context).primaryColor,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.system_update, color: Colors.white),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'Eine neue Version (${info.latestVersion}) ist verfügbar!',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => ref
+                              .read(updateServiceProvider.notifier)
+                              .ignoreUpdate(),
+                          child: const Text('Später',
+                              style: TextStyle(color: Colors.white70)),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => ref
+                              .read(updateServiceProvider.notifier)
+                              .performUpdate(info.downloadUrl),
+                          child: const Text('Update'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (e, s) => const SizedBox.shrink(),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isDesktop = constraints.maxWidth > 800;
+                    final listWidget = _buildList(
+                        context,
+                        ref,
+                        todosStream,
+                        categoriesAsync,
+                        isDesktop,
+                        selectedTodoId,
+                        isCompactHeight);
 
-              if (isDesktop) {
-                return Row(
-                  children: [
-                    Expanded(flex: 1, child: listWidget),
-                    const VerticalDivider(width: 1),
-                    Expanded(
-                        flex: 2,
-                        child: _buildDetail(
-                            context, ref, todosStream, selectedTodoId)),
-                  ],
-                );
-              } else {
-                return listWidget;
-              }
-            },
+                    if (isDesktop) {
+                      return Row(
+                        children: [
+                          Expanded(flex: 1, child: listWidget),
+                          const VerticalDivider(width: 1),
+                          Expanded(
+                              flex: 2,
+                              child: _buildDetail(
+                                  context, ref, todosStream, selectedTodoId)),
+                        ],
+                      );
+                    } else {
+                      return listWidget;
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
           if (ref.watch(isDraggingTodoProvider))
             Positioned(
@@ -396,7 +454,7 @@ class HomeScreen extends ConsumerWidget {
                   width: isHovered ? 140 : 120,
                   decoration: BoxDecoration(
                     color: isHovered
-                        ? colors[index].withValues(alpha: 0.2)
+                        ? colors[index].withOpacity(0.2)
                         : Theme.of(context).colorScheme.surface,
                     border: Border.all(
                         color: colors[index], width: isHovered ? 3 : 1),
@@ -425,7 +483,7 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class TodoListTile extends StatelessWidget {
+class TodoListTile extends HookWidget {
   final Todo todo;
   final Category? category;
 
@@ -442,77 +500,127 @@ class TodoListTile extends StatelessWidget {
     }
   }
 
+  bool _isDueToday() {
+    if (todo.dueDate == null) return false;
+    final now = DateTime.now();
+    return todo.dueDate!.year == now.year &&
+        todo.dueDate!.month == now.month &&
+        todo.dueDate!.day == now.day;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isToday = _isDueToday();
+
+    // Pulse animation logic
+    final controller = useAnimationController(
+      duration: const Duration(seconds: 2),
+      lowerBound: 0.1,
+      upperBound: 1.0,
+    );
+
+    useEffect(() {
+      if (isToday) {
+        controller.repeat(reverse: true);
+      } else {
+        controller.stop();
+      }
+      return null;
+    }, [isToday]);
+
+    final pulseOpacity = useAnimation(controller);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                color: getPriorityColor(),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    todo.title ?? 'No Title',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (category != null) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _parseColor(category!.color)
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            category!.name ?? '',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: _parseColor(category!.color),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Icon(Icons.calendar_today,
-                          size: 14, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(
-                        todo.dueDate != null
-                            ? DateFormat('dd.MM.yyyy').format(todo.dueDate!)
-                            : '',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                    ],
+      child: Container(
+        decoration: isToday
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.red.withOpacity(pulseOpacity),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withOpacity(pulseOpacity * 0.2),
+                    blurRadius: 8,
+                    spreadRadius: 2,
                   ),
                 ],
+              )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: getPriorityColor(),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            Text(
-              todo.status,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-            ),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      todo.title ?? 'No Title',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (category != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _parseColor(category!.color)
+                                  .withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              category!.name ?? '',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _parseColor(category!.color),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Icon(Icons.calendar_today,
+                            size: 14,
+                            color: isToday ? Colors.red : Colors.grey.shade600),
+                        const SizedBox(width: 4),
+                        Text(
+                          todo.dueDate != null
+                              ? DateFormat('dd.MM.yyyy').format(todo.dueDate!)
+                              : '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isToday ? Colors.red : Colors.grey.shade600,
+                            fontWeight: isToday ? FontWeight.bold : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                todo.status,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
         ),
       ),
     );
