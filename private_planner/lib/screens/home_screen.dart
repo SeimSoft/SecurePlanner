@@ -173,82 +173,157 @@ class HomeScreen extends ConsumerWidget {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      final isSelected = selectedTodoId == item.todo.id;
-                      return GestureDetector(
-                        onTap: () {
-                          if (isDesktop) {
-                            ref.read(selectedTodoIdProvider.notifier).state =
-                                item.todo.id;
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    TodoDetailScreen(todo: item.todo),
-                              ),
-                            );
-                          }
-                        },
-                        child: Draggable<Todo>(
-                          data: item.todo,
-                          feedback: Material(
-                            elevation: 8,
-                            borderRadius: BorderRadius.circular(12),
-                            color: Theme.of(context).cardColor,
-                            child: SizedBox(
-                              width: 300,
-                              child: TodoListTile(
-                                  todo: item.todo, category: item.category),
-                            ),
-                          ),
-                          childWhenDragging: Opacity(
-                            opacity: 0.3,
-                            child: Container(
-                              decoration: isDesktop && isSelected
-                                  ? BoxDecoration(
-                                      border: Border.all(
-                                          color: Theme.of(context).primaryColor,
-                                          width: 2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    )
-                                  : null,
-                              child: TodoListTile(
-                                  todo: item.todo, category: item.category),
-                            ),
-                          ),
-                          onDragStarted: () => ref
-                              .read(isDraggingTodoProvider.notifier)
-                              .state = true,
-                          onDragEnd: (_) => ref
-                              .read(isDraggingTodoProvider.notifier)
-                              .state = false,
-                          child: Container(
-                            decoration: isDesktop && isSelected
-                                ? BoxDecoration(
-                                    border: Border.all(
-                                        color: Theme.of(context).primaryColor,
-                                        width: 2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  )
-                                : null,
-                            child: TodoListTile(
-                                todo: item.todo, category: item.category),
-                          ),
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _buildGroupedList(
+                          context,
+                          ref,
+                          items,
+                          isDesktop,
+                          selectedTodoId,
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, s) => Center(child: Text('Fehler: $e')),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildGroupedList(
+    BuildContext context,
+    WidgetRef ref,
+    List<ListTodoResult> items,
+    bool isDesktop,
+    String? selectedTodoId,
+  ) {
+    final inProgress =
+        items.where((i) => i.todo.status == 'In Progress').toList();
+    final inReview = items.where((i) => i.todo.status == 'Review').toList();
+    final other = items
+        .where(
+            (i) => i.todo.status != 'In Progress' && i.todo.status != 'Review')
+        .toList();
+
+    return CustomScrollView(
+      slivers: [
+        if (inProgress.isNotEmpty) ...[
+          _buildSliverHeader('In Progress', context),
+          _buildSliverList(inProgress, isDesktop, selectedTodoId, ref),
+        ],
+        if (other.isNotEmpty) ...[
+          if (inProgress.isNotEmpty) _buildSliverHeader('Todos', context),
+          _buildSliverList(other, isDesktop, selectedTodoId, ref),
+        ],
+        if (inReview.isNotEmpty) ...[
+          _buildSliverHeader('In Review', context),
+          _buildSliverList(inReview, isDesktop, selectedTodoId, ref),
+        ],
+        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+      ],
+    );
+  }
+
+  Widget _buildSliverHeader(String title, BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).primaryColor,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliverList(
+    List<ListTodoResult> items,
+    bool isDesktop,
+    String? selectedTodoId,
+    WidgetRef ref,
+  ) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = items[index];
+            final isSelected = selectedTodoId == item.todo.id;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GestureDetector(
+                onTap: () {
+                  if (isDesktop) {
+                    ref.read(selectedTodoIdProvider.notifier).state =
+                        item.todo.id;
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TodoDetailScreen(todo: item.todo),
+                      ),
+                    );
+                  }
+                },
+                child: Draggable<Todo>(
+                  data: item.todo,
+                  feedback: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context).cardColor,
+                    child: SizedBox(
+                      width: 300,
+                      child: TodoListTile(
+                          todo: item.todo, category: item.category),
+                    ),
+                  ),
+                  childWhenDragging: Opacity(
+                    opacity: 0.3,
+                    child: Container(
+                      decoration: isDesktop && isSelected
+                          ? BoxDecoration(
+                              border: Border.all(
+                                  color: Theme.of(context).primaryColor,
+                                  width: 2),
+                              borderRadius: BorderRadius.circular(12),
+                            )
+                          : null,
+                      child: TodoListTile(
+                          todo: item.todo, category: item.category),
+                    ),
+                  ),
+                  onDragStarted: () =>
+                      ref.read(isDraggingTodoProvider.notifier).state = true,
+                  onDragEnd: (_) =>
+                      ref.read(isDraggingTodoProvider.notifier).state = false,
+                  child: Container(
+                    decoration: isDesktop && isSelected
+                        ? BoxDecoration(
+                            border: Border.all(
+                                color: Theme.of(context).primaryColor,
+                                width: 2),
+                            borderRadius: BorderRadius.circular(12),
+                          )
+                        : null,
+                    child:
+                        TodoListTile(todo: item.todo, category: item.category),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: items.length,
+        ),
+      ),
     );
   }
 
