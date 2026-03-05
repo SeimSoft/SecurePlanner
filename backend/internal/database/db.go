@@ -82,6 +82,14 @@ func InitDB(dataSourceName string) {
 		FOREIGN KEY(todo_id) REFERENCES todos(id),
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);
+
+	CREATE TABLE IF NOT EXISTS qr_tokens (
+		token TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL,
+		used BOOLEAN DEFAULT FALSE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id)
+	);
 	`
 
 	_, err = DB.Exec(createTables)

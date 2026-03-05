@@ -19,3 +19,14 @@ final watchAttachmentsProvider =
     StreamProvider.family<List<Attachment>, String>((ref, todoId) {
   return ref.watch(databaseProvider).watchAttachments(todoId);
 });
+
+final appLockProvider = StateNotifierProvider<AppLockNotifier, bool>((ref) {
+  return AppLockNotifier();
+});
+
+class AppLockNotifier extends StateNotifier<bool> {
+  AppLockNotifier() : super(true); // Default to locked
+
+  void unlock() => state = false;
+  void lock() => state = true;
+}

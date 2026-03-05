@@ -63,3 +63,41 @@ func VerifyToken(tokenString string) (*Claims, error) {
 
 	return claims, nil
 }
+
+func GenerateQRToken(userID int) (string, error) {
+	// Generate a secure random token
+	token := time.Now().String() // Placeholder, use better random in production
+	_, err := database.DB.Exec("INSERT INTO qr_tokens (token, user_id) VALUES (?, ?)", token, userID)
+	return token, err
+}
+
+func LoginWithQR(token string) (string, error) {
+	var userID int
+	var used bool
+	err := database.DB.QueryRow("SELECT user_id, used FROM qr_tokens WHERE token = ?", token).Scan(&userID, &used)
+	if err != nil {
+		return "", errors.New("invalid or expired token")
+	}
+
+	if used {
+		return "", errors.New("token already used")
+	}
+
+	// Mark token as used
+	_, err = database.DB.Exec("UPDATE qr_tokens SET used = TRUE WHERE token = ?", token)
+	if err != nil {
+		return "", err
+	}
+
+	// Generate JWT
+	expirationTime := time.Now().Add(72 * time.Hour)
+	claims := &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+		},
+	}
+
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return jwtToken.SignedString(jwtKey)
+}

@@ -17,7 +17,10 @@ func main() {
 	r := gin.Default()
 
 	// Auth routes
-	r.POST("/register", func(c *gin.Context) {
+	// Registration disabled for public as requested. Admin must create users.
+	// Placeholder admin route for creating users and generating QR codes.
+	r.POST("/admin/create-user", func(c *gin.Context) {
+		// In a real app, this would be protected by admin middleware
 		var req struct {
 			Username string `json:"username" binding:"required"`
 			Password string `json:"password" binding:"required"`
@@ -30,7 +33,43 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not register user"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "User registered successfully"})
+
+		var userID int
+		err := database.DB.QueryRow("SELECT id FROM users WHERE username = ?", req.Username).Scan(&userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		token, err := auth.GenerateQRToken(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate QR token"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "User created",
+			"qr_data": gin.H{
+				"url":   "http://localhost:8080", // Hardcoded for now
+				"token": token,
+			},
+		})
+	})
+
+	r.POST("/qr-login", func(c *gin.Context) {
+		var req struct {
+			Token string `json:"token" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		token, err := auth.LoginWithQR(req.Token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": token})
 	})
 
 	r.POST("/login", func(c *gin.Context) {
