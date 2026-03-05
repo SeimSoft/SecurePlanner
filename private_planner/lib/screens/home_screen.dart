@@ -29,6 +29,19 @@ class HomeScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Private Planner'),
         actions: [
+          Row(
+            children: [
+              const Text('Show Done', style: TextStyle(fontSize: 14)),
+              Checkbox(
+                value: ref.watch(showDoneTodosProvider),
+                onChanged: (val) {
+                  if (val != null) {
+                    ref.read(showDoneTodosProvider.notifier).state = val;
+                  }
+                },
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(

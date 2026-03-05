@@ -8,12 +8,14 @@ final watchCategoriesProvider = StreamProvider((ref) {
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final selectedTodoIdProvider = StateProvider<String?>((ref) => null);
+final showDoneTodosProvider = StateProvider<bool>((ref) => false);
 
 final watchTodosWithCategoryProvider =
     StreamProvider.family<List<ListTodoResult>, String?>((ref, categoryId) {
+  final showDone = ref.watch(showDoneTodosProvider);
   return ref
       .watch(databaseProvider)
-      .watchTodosWithCategory(categoryId: categoryId);
+      .watchTodosWithCategory(categoryId: categoryId, showDone: showDone);
 });
 
 final watchCommentsProvider =

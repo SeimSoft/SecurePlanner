@@ -86,11 +86,16 @@ class AppDatabase extends _$AppDatabase {
 
   // Todos
   Future<List<Todo>> getAllTodos() => select(todos).get();
-  Stream<List<ListTodoResult>> watchTodosWithCategory({String? categoryId}) {
+  Stream<List<ListTodoResult>> watchTodosWithCategory(
+      {String? categoryId, bool showDone = false}) {
     var query = select(todos).join([
       leftOuterJoin(categories, categories.id.equalsExp(todos.categoryId)),
     ])
       ..where(todos.deleted.equals(false));
+
+    if (!showDone) {
+      query.where(todos.status.equals('Done').not());
+    }
 
     if (categoryId != null) {
       query.where(todos.categoryId.equals(categoryId));
