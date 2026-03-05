@@ -90,7 +90,7 @@ class SyncService {
                 version: data['version'],
                 updatedAt: DateTime.parse(data['updated_at']),
                 categoryId: data['category_id'],
-                ownerId: data['owner_id'] ?? '',
+                ownerId: data['owner_id'] ?? 0,
                 status: data['status'] ?? 'Backlog',
                 deleted: data['deleted'] ?? false,
               ));
@@ -102,8 +102,9 @@ class SyncService {
     final allLocalTodos = await _db.select(_db.todos).get();
     final toPush = <Map<String, dynamic>>[];
     for (var t in allLocalTodos) {
-      if (t.categoryId != null && localOnlyCatIds.contains(t.categoryId!))
+      if (t.categoryId != null && localOnlyCatIds.contains(t.categoryId!)) {
         continue;
+      }
 
       final fields = {
         'title': t.title ?? '',
@@ -130,7 +131,7 @@ class SyncService {
     if (toPush.isNotEmpty) {
       await _ref
           .read(dioProvider)
-          .post('${_auth.baseUrl}/todos/sync', data: toPush); }
+          .post('${_auth.baseUrl}/todos/sync', data: toPush);
     }
   }
 

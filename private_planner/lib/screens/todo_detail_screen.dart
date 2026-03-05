@@ -38,7 +38,7 @@ class TodoDetailScreen extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String>(
-              value: todo.status,
+              initialValue: todo.status,
               decoration: const InputDecoration(labelText: 'Status'),
               items: statusList
                   .map((s) => DropdownMenuItem(value: s, child: Text(s)))

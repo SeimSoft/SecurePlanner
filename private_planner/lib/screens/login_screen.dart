@@ -84,21 +84,25 @@ class LoginScreen extends HookConsumerWidget {
                           if (isRegister.value) {
                             await authService.register(usernameController.text,
                                 passwordController.text);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Registrierung erfolgreich! Bitte einloggen.')),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Registrierung erfolgreich! Bitte einloggen.')),
+                              );
+                            }
                             isRegister.value = false;
                           } else {
                             await authService.login(usernameController.text,
                                 passwordController.text);
-                            // Navigate to Home
                           }
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Fehler: ${e.toString()}')),
-                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Fehler: ${e.toString()}')),
+                            );
+                          }
                         } finally {
                           isLoading.value = false;
                         }
