@@ -28,6 +28,9 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  // Native drop handler that implements IDropTarget for Outlook virtual file drops.
+  class NativeDropHandler;
+  std::unique_ptr<NativeDropHandler> native_drop_handler_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

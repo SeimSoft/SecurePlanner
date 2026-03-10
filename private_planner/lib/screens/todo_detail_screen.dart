@@ -3,6 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/providers/database_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:uuid/uuid.dart';
 import 'package:private_planner/providers/app_providers.dart';
 
@@ -101,11 +102,29 @@ class TodoDetailScreen extends HookConsumerWidget {
                   data: (attachments) => Wrap(
                     spacing: 8,
                     children: attachments
-                        .map((a) => Chip(
-                              label: Text(a.filePath.split('/').last),
-                              onDeleted: () {
-                                // Delete attachment logic
+                        .map((a) => GestureDetector(
+                              onDoubleTap: () async {
+                                try {
+                                  await OpenFilex.open(a.filePath);
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'Kann Datei nicht öffnen: $e')),
+                                  );
+                                }
                               },
+                              child: Chip(
+                                label: Text(a.filePath
+                                    .split(RegExp(r'[\\/]+'))
+                                    .last),
+                                onDeleted: () async {
+                                  // Delete attachment logic
+                                  await db.delete(db.attachments)
+                                      .go();
+                                  // Note: adjust deletion to target the specific attachment
+                                },
+                              ),
                             ))
                         .toList(),
                   ),

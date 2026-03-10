@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "native_drop_handler.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -27,6 +28,10 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // Register native drop handler so we can accept virtual Outlook drops.
+  native_drop_handler_.reset(new NativeDropHandler(flutter_controller_->engine()->messenger()));
+  RegisterDragDrop(GetHandle(), native_drop_handler_.get());
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -40,6 +45,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (native_drop_handler_) {
+    RevokeDragDrop(GetHandle());
+    native_drop_handler_.reset();
+  }
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <shellapi.h>
 
 #include "resource.h"
 
@@ -51,6 +52,24 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
     enable_non_client_dpi_scaling(hwnd);
   }
   FreeLibrary(user32_module);
+}
+
+// Helper to enable blur behind the window (simple translucent background).
+static void EnableBlurBehind(HWND hwnd) {
+  DWM_BLURBEHIND bb{};
+  bb.dwFlags = DWM_BB_ENABLE;
+  bb.fEnable = TRUE;
+  bb.hRgnBlur = nullptr;  // nullptr blurs the entire window
+  DwmEnableBlurBehindWindow(hwnd, &bb);
+}
+
+// Toggle the taskbar auto-hide state. This uses SHAppBarMessage ABM_SETSTATE.
+static void SetTaskbarAutoHide(bool enable) {
+  APPBARDATA abd{};
+  abd.cbSize = sizeof(abd);
+  abd.hWnd = FindWindow(L"Shell_TrayWnd", nullptr);
+  abd.lParam = enable ? ABS_AUTOHIDE : 0;
+  SHAppBarMessage(ABM_SETSTATE, &abd);
 }
 
 }  // namespace
@@ -204,6 +223,18 @@ Win32Window::MessageHandler(HWND hwnd,
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
+      // If the window is very short, request the taskbar to auto-hide.
+      // Avoid repeated system calls by tracking the current state in
+      // `taskbar_auto_hidden_`.
+      const int kHideThreshold = 220; // pixels
+      int height = rect.bottom - rect.top;
+      if (height <= kHideThreshold && !taskbar_auto_hidden_) {
+        SetTaskbarAutoHide(true);
+        taskbar_auto_hidden_ = true;
+      } else if (height > kHideThreshold && taskbar_auto_hidden_) {
+        SetTaskbarAutoHide(false);
+        taskbar_auto_hidden_ = false;
+      }
       return 0;
     }
 
@@ -264,7 +295,11 @@ void Win32Window::SetQuitOnClose(bool quit_on_close) {
 }
 
 bool Win32Window::OnCreate() {
-  // No-op; provided for subclasses.
+  // Enable blur behind for a translucent background if we have a valid
+  // window handle. Subclasses may still override this behavior.
+  if (window_handle_) {
+    EnableBlurBehind(window_handle_);
+  }
   return true;
 }
 

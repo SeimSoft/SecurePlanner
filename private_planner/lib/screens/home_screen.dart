@@ -6,7 +6,11 @@ import 'package:private_planner/screens/category_management_screen.dart';
 import 'package:private_planner/screens/todo_detail_screen.dart';
 import 'package:private_planner/providers/app_providers.dart';
 import 'package:private_planner/screens/search_screen.dart';
+import 'package:private_planner/services/jira_service.dart';
+import 'package:uuid/uuid.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:intl/intl.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:private_planner/services/sync_service.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -42,6 +46,105 @@ class HomeScreen extends ConsumerWidget {
             icon: const Icon(Icons.sync),
             onPressed: () => ref.read(syncServiceProvider).sync(),
           ),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'import_jira') {
+                // Show import dialog
+                final creds = await JiraService.getStoredCredentials();
+                final urlController = TextEditingController();
+                final userController = TextEditingController(text: creds['username'] ?? '');
+                final passController = TextEditingController(text: creds['password'] ?? '');
+                bool saveCreds = creds['username'] != null && creds['password'] != null;
+
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Import from JIRA'),
+                    content: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: urlController,
+                            decoration: const InputDecoration(labelText: 'JIRA Issue URL'),
+                          ),
+                          TextField(
+                            controller: userController,
+                            decoration: const InputDecoration(labelText: 'Username'),
+                          ),
+                          TextField(
+                            controller: passController,
+                            decoration: const InputDecoration(labelText: 'Password'),
+                            obscureText: true,
+                          ),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: saveCreds,
+                                onChanged: (v) => saveCreds = v ?? false,
+                              ),
+                              const Text('Save credentials')
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel')),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final url = urlController.text.trim();
+                          final username = userController.text.trim();
+                          final password = passController.text;
+                          if (url.isEmpty || username.isEmpty || password.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+                            return;
+                          }
+                          Navigator.of(context).pop();
+                          try {
+                            final issue = await JiraService.fetchIssueFromUrl(url, username, password);
+                            if (saveCreds) {
+                              await JiraService.storeCredentials(username, password);
+                            }
+                            final db = ref.read(databaseProvider);
+                            final newId = const Uuid().v4();
+                            await db.insertTodo(TodosCompanion.insert(
+                              id: newId,
+                              title: Value(issue['summary']),
+                              priority: const Value(1),
+                              timeEstimate: Value(''),
+                              dueDate: Value(DateTime.now()),
+                              encryptedBlob: '',
+                            ));
+                            // Attach URL as attachment so it can be opened from details.
+                            await db.into(db.attachments).insert(AttachmentsCompanion.insert(
+                              id: const Uuid().v4(),
+                              todoId: newId,
+                              userId: 0,
+                              filePath: url,
+                              encryptedName: issue['key'] ?? '',
+                            ));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Imported JIRA issue')));
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+                            }
+                          }
+                        },
+                        child: const Text('OK'),
+                      )
+                    ],
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'import_jira', child: Text('Import from JIRA'))
+            ],
+          ),
         ],
       ),
       body: todosStream.when(
@@ -63,15 +166,29 @@ class HomeScreen extends ConsumerWidget {
                 itemCount: items.length,
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TodoDetailScreen(todo: item.todo),
+                  return DropTarget(
+                    onDragDone: (detail) async {
+                      if (detail.files.isNotEmpty) {
+                        final file = detail.files.first;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Dropped file: \\${file.path}')),
+                        );
+                        // TODO: Persist or attach the dropped file to the todo item.
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Drop had no files or is not supported')),
+                        );
+                      }
+                    },
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TodoDetailScreen(todo: item.todo),
+                        ),
                       ),
+                      child: TodoListTile(todo: item.todo, category: item.category),
                     ),
-                    child:
-                        TodoListTile(todo: item.todo, category: item.category),
                   );
                 },
               ),
