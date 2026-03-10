@@ -14,6 +14,7 @@ final watchUsersProvider = StreamProvider<List<User>>((ref) {
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final selectedTodoIdProvider = StateProvider<String?>((ref) => null);
+final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
 final showDoneTodosProvider = StateProvider<bool>((ref) => false);
 
 final watchTodosWithCategoryProvider =

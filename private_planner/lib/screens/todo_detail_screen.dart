@@ -305,12 +305,19 @@ class TodoDetailScreen extends HookConsumerWidget {
                                   onDoubleTap: () async {
                                     try {
                                       // Open URLs with OpenFilex; files will open with default app
-                                      await OpenFilex.open(a.filePath);
+                                      final result = await OpenFilex.open(a.filePath);
+                                      if (result.type != ResultType.done && context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Cannot open file: ${result.message}')),
+                                        );
+                                      }
                                     } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                            content: Text('Kann Datei nicht öffnen: $e')),
-                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                              content: Text('Kann Datei nicht öffnen: $e')),
+                                        );
+                                      }
                                     }
                                   },
                                   child: Chip(

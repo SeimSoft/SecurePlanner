@@ -68,7 +68,7 @@ class JiraService {
       final summary = (fields['summary'] ?? '').toString();
       final description = (fields['description'] ?? '').toString();
       return {'key': key, 'summary': summary, 'description': description};
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       throw Exception('Failed to fetch issue: ${e.message}');
     }
   }
