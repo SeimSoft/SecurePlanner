@@ -79,8 +79,8 @@ IFACEMETHODIMP NativeDropHandler::Drop(IDataObject* pDataObj, DWORD,
   if (!pDataObj) return E_INVALIDARG;
 
   // Try FileGroupDescriptor (Outlook virtual files).
-  CLIPFORMAT cfFileGroupDescriptor = RegisterClipboardFormat(CFSTR_FILEDESCRIPTORW);
-  CLIPFORMAT cfFileContents = RegisterClipboardFormat(CFSTR_FILECONTENTS);
+  CLIPFORMAT cfFileGroupDescriptor = (CLIPFORMAT)RegisterClipboardFormat(CFSTR_FILEDESCRIPTORW);
+  CLIPFORMAT cfFileContents = (CLIPFORMAT)RegisterClipboardFormat(CFSTR_FILECONTENTS);
 
   FORMATETC fmt = {cfFileGroupDescriptor, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
   STGMEDIUM stg = {};

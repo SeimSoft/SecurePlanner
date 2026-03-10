@@ -8,6 +8,8 @@
 
 #include "win32_window.h"
 
+class NativeDropHandler;
+
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
  public:
@@ -29,7 +31,6 @@ class FlutterWindow : public Win32Window {
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   // Native drop handler that implements IDropTarget for Outlook virtual file drops.
-  class NativeDropHandler;
   std::unique_ptr<NativeDropHandler> native_drop_handler_;
 };
 
