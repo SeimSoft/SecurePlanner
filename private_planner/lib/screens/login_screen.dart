@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:private_planner/services/auth_service.dart';
-
-final serverUrlProvider =
-    StateProvider<String>((ref) => 'http://localhost:8080');
+import 'package:private_planner/screens/qr_scan_screen.dart';
 
 class LoginScreen extends HookConsumerWidget {
   const LoginScreen({super.key});
@@ -13,9 +11,6 @@ class LoginScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final usernameController = useTextEditingController();
     final passwordController = useTextEditingController();
-    final serverUrlController =
-        useTextEditingController(text: ref.read(serverUrlProvider));
-    final isRegister = useState(false);
     final isLoading = useState(false);
 
     return Scaffold(
@@ -26,10 +21,10 @@ class LoginScreen extends HookConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Icon(Icons.lock_outline, size: 80, color: Colors.indigo),
+              const SizedBox(height: 24),
               Text(
-                isRegister.value
-                    ? 'Neues Konto erstellen'
-                    : 'Willkommen zurück',
+                'Mit Server verbinden',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -37,22 +32,11 @@ class LoginScreen extends HookConsumerWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
-                'Bitte melde dich an, um fortzufahren',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey.shade600,
-                    ),
+              const Text(
+                'Gib deine Zugangsdaten ein oder scanne einen QR-Code vom Administrator.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
-              TextField(
-                controller: serverUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'Server URL',
-                  prefixIcon: Icon(Icons.dns),
-                ),
-              ),
-              const SizedBox(height: 16),
               TextField(
                 controller: usernameController,
                 decoration: const InputDecoration(
@@ -76,43 +60,46 @@ class LoginScreen extends HookConsumerWidget {
                     : () async {
                         isLoading.value = true;
                         try {
-                          final authService = ref.read(authServiceProvider);
-                          authService.baseUrl = serverUrlController.text;
-                          ref.read(serverUrlProvider.notifier).state =
-                              serverUrlController.text;
-
-                          if (isRegister.value) {
-                            await authService.register(usernameController.text,
-                                passwordController.text);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Registrierung erfolgreich! Bitte einloggen.')),
-                            );
-                            isRegister.value = false;
-                          } else {
-                            await authService.login(usernameController.text,
-                                passwordController.text);
-                            // Navigate to Home
+                          await ref.read(authServiceProvider).login(
+                                usernameController.text,
+                                passwordController.text,
+                              );
+                          if (context.mounted) {
+                            Navigator.of(context).pushReplacementNamed('/home');
                           }
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Fehler: ${e.toString()}')),
-                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Login fehlgeschlagen: $e')),
+                            );
+                          }
                         } finally {
                           isLoading.value = false;
                         }
                       },
                 child: isLoading.value
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(isRegister.value ? 'Registrieren' : 'Anmelden'),
+                    : const Text('Anmelden'),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (context) => const QrScanScreen()),
+                  );
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('QR-Code scannen'),
               ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () => isRegister.value = !isRegister.value,
-                child: Text(isRegister.value
-                    ? 'Bereits ein Konto? Hier anmelden'
-                    : 'Noch kein Konto? Jetzt registrieren'),
+                onPressed: () {
+                  // Skip to local mode
+                  Navigator.of(context).pushReplacementNamed('/home');
+                },
+                child: const Text('Offline weiter nutzen'),
               ),
             ],
           ),

@@ -31,11 +31,28 @@ class Categories extends Table {
   TextColumn get color => text().nullable()();
   BoolColumn get syncToServer => boolean().withDefault(const Constant(true))();
   BoolColumn get isShared => boolean().withDefault(const Constant(false))();
+  BoolColumn get sharedWithHousehold =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get ownerId => integer().nullable()();
   TextColumn get encryptedBlob => text().nullable()(); // For syncing to server
   IntColumn get version => integer().withDefault(const Constant(1))();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class Households extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class Users extends Table {
+  IntColumn get id => integer()();
+  TextColumn get username => text()();
+  TextColumn get profilePicturePath => text().nullable()();
+  IntColumn get householdId => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -76,20 +93,48 @@ class Attachments extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(
-    tables: [Todos, Categories, CategoryShares, Comments, Attachments])
+@DriftDatabase(tables: [
+  Todos,
+  Categories,
+  CategoryShares,
+  Comments,
+  Attachments,
+  Households,
+  Users
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2; // Incremented schema version
+  int get schemaVersion => 3; // Incremented schema version
 
   // Todos
   Future<List<Todo>> getAllTodos() => select(todos).get();
-  Stream<List<ListTodoResult>> watchTodosWithCategory() {
-    final query = select(todos).join([
+  Stream<List<ListTodoResult>> watchTodosWithCategory(
+      {String? categoryId, bool showDone = false}) {
+    var query = select(todos).join([
       leftOuterJoin(categories, categories.id.equalsExp(todos.categoryId)),
+    ])
+      ..where(todos.deleted.equals(false));
+
+    if (!showDone) {
+      query.where(todos.status.equals('Done').not());
+    }
+
+    if (categoryId != null) {
+      query.where(todos.categoryId.equals(categoryId));
+    }
+
+    // Sort by priority (DESC), then due_date (ASC), then updated_at (DESC)
+    query.orderBy([
+      OrderingTerm(expression: todos.priority, mode: OrderingMode.desc),
+      OrderingTerm(
+          expression: todos.dueDate,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last),
+      OrderingTerm(expression: todos.updatedAt, mode: OrderingMode.desc),
     ]);
+
     return query.watch().map((rows) {
       return rows.map((row) {
         return ListTodoResult(
@@ -143,6 +188,10 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) =>
               t.title.like('%$query%') | t.encryptedBlob.like('%$query%')))
         .watch();
+  }
+
+  Stream<List<User>> watchUsers() {
+    return select(users).watch();
   }
 }
 

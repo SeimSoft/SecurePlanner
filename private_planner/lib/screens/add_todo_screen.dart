@@ -60,7 +60,7 @@ class AddTodoScreen extends HookConsumerWidget {
             const SizedBox(height: 8),
             ref.watch(watchCategoriesProvider).when(
                   data: (cats) => DropdownButtonFormField<String>(
-                    value: selectedCategory.value,
+                    initialValue: selectedCategory.value,
                     decoration:
                         const InputDecoration(border: OutlineInputBorder()),
                     items: cats

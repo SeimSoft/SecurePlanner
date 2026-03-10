@@ -17,17 +17,26 @@ func InitDB(dataSourceName string) {
 	}
 
 	createTables := `
+	CREATE TABLE IF NOT EXISTS households (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT UNIQUE NOT NULL,
 		password_hash TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		profile_picture_path TEXT,
+		household_id INTEGER,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(household_id) REFERENCES households(id)
 	);
 
 	CREATE TABLE IF NOT EXISTS categories (
 		id TEXT PRIMARY KEY,
 		user_id INTEGER NOT NULL,
 		encrypted_name TEXT NOT NULL,
+		shared_with_household BOOLEAN DEFAULT FALSE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);
@@ -82,10 +91,30 @@ func InitDB(dataSourceName string) {
 		FOREIGN KEY(todo_id) REFERENCES todos(id),
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);
+
+	CREATE TABLE IF NOT EXISTS qr_tokens (
+		token TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL,
+		used BOOLEAN DEFAULT FALSE,
+		type TEXT DEFAULT 'login', -- 'login', 'household_join'
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id)
+	);
 	`
 
 	_, err = DB.Exec(createTables)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Migrations for existing databases
+	migrations := []string{
+		"ALTER TABLE users ADD COLUMN profile_picture_path TEXT",
+		"ALTER TABLE users ADD COLUMN household_id INTEGER REFERENCES households(id)",
+		"ALTER TABLE categories ADD COLUMN shared_with_household BOOLEAN DEFAULT FALSE",
+		"ALTER TABLE qr_tokens ADD COLUMN type TEXT DEFAULT 'login'",
+	}
+	for _, m := range migrations {
+		_, _ = DB.Exec(m) // Ignore error if column already exists
 	}
 }

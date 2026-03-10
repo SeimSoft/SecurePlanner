@@ -3,10 +3,12 @@ package models
 import "time"
 
 type User struct {
-	ID           int       `json:"id"`
-	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                 int       `json:"id"`
+	Username           string    `json:"username"`
+	PasswordHash       string    `json:"-"`
+	ProfilePicturePath *string   `json:"profile_picture_path"`
+	HouseholdID        *int      `json:"household_id"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type Todo struct {
@@ -26,10 +28,11 @@ type Todo struct {
 }
 
 type Category struct {
-	ID            string    `json:"id"`
-	UserID        int       `json:"user_id"`
-	EncryptedName string    `json:"encrypted_name"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID                  string    `json:"id"`
+	UserID              int       `json:"user_id"`
+	EncryptedName       string    `json:"encrypted_name"`
+	SharedWithHousehold bool      `json:"shared_with_household"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type CategoryShare struct {

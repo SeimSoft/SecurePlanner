@@ -25,11 +25,28 @@ class CategoryManagementScreen extends ConsumerWidget {
               leading: Icon(Icons.category, color: _parseColor(cat.color)),
               title: Text(cat.name ?? 'Unbenannt'),
               subtitle: Text(cat.syncToServer ? 'Synchronisiert' : 'Nur Lokal'),
-              trailing: Switch(
-                value: cat.syncToServer,
-                onChanged: (val) {
-                  db.insertCategory(cat.copyWith(syncToServer: val));
-                },
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: cat.syncToServer,
+                    onChanged: (val) {
+                      db.insertCategory(cat.copyWith(
+                          syncToServer: val, version: cat.version + 1));
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () => _showEditCategoryDialog(context, db, cat),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () async {
+                      await db.update(db.categories).replace(cat.copyWith(
+                          deleted: true, version: cat.version + 1));
+                    },
+                  ),
+                ],
               ),
             );
           },
@@ -94,6 +111,55 @@ class CategoryManagementScreen extends ConsumerWidget {
                 }
               },
               child: const Text('Erstellen'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditCategoryDialog(
+      BuildContext context, AppDatabase db, Category cat) {
+    final nameController = TextEditingController(text: cat.name);
+    bool syncToServer = cat.syncToServer;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Kategorie bearbeiten'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              SwitchListTile(
+                title: const Text('Mit NAS synchronisieren'),
+                value: syncToServer,
+                onChanged: (val) => setState(() => syncToServer = val),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.isNotEmpty) {
+                  final newName = nameController.text.trim();
+                  await db.update(db.categories).replace(cat.copyWith(
+                        name: Value(newName.isEmpty ? null : newName),
+                        syncToServer: syncToServer,
+                        version: cat.version + 1,
+                      ));
+                  if (context.mounted) Navigator.pop(context);
+                }
+              },
+              child: const Text('Speichern'),
             ),
           ],
         ),

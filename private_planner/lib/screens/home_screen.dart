@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:private_planner/data/database.dart';
 import 'package:private_planner/core/theme/app_theme.dart';
 import 'package:private_planner/screens/category_management_screen.dart';
@@ -8,111 +9,126 @@ import 'package:private_planner/providers/app_providers.dart';
 import 'package:private_planner/screens/search_screen.dart';
 import 'package:private_planner/services/jira_service.dart';
 import 'package:uuid/uuid.dart';
+import 'package:private_planner/widgets/add_todo_dialog.dart';
+import 'package:private_planner/screens/settings_screen.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:intl/intl.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:private_planner/services/sync_service.dart';
+import 'package:private_planner/providers/database_provider.dart';
+import 'package:private_planner/services/update_service.dart';
+import 'dart:math' as math;
+import 'package:drift/drift.dart' as drift;
+import 'package:confetti/confetti.dart';
 
-class HomeScreen extends ConsumerWidget {
+final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
+
+class HomeScreen extends HookConsumerWidget {
   const HomeScreen({super.key});
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final todosStream = ref.watch(watchTodosWithCategoryProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Private Planner'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SearchScreen(),
+  Color _parseColor(String? colorStr) {
+    if (colorStr == null) return Colors.grey;
+      ),
+      floatingActionButton: isCompactHeight || ref.watch(isDraggingTodoProvider)
+          ? null
+          : FloatingActionButton(
+              onPressed: () {
+                showDialog(
+                  ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => ref
+                              .read(updateServiceProvider.notifier)
+                              .performUpdate(info.downloadUrl),
+                          child: const Text('Update'),
+                        ),
+                        ),
+                        body: todosStream.when(
+                ),
+                ),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isDesktop = constraints.maxWidth > 800;
+                    final listWidget = _buildList(
+                        context,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.category),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const CategoryManagementScreen(),
+        );
+                        children: [
+                          Expanded(flex: 1, child: listWidget),
+                          const VerticalDivider(width: 1),
+                          Expanded(
+                              flex: 2,
+                              child: _buildDetail(
+                                  context, ref, todosStream, selectedTodoId)),
+                        ],
+                      );
+                    } else {
+                      return listWidget;
+                    }
+                  },
+                ),
               ),
-            ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () => ref.read(syncServiceProvider).sync(),
+          if (ref.watch(isDraggingTodoProvider))
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 32,
+              child: _buildDragBaskets(context, ref, confettiController),
+            ),
+          if (ref.watch(isDraggingTodoProvider))
+            Positioned(
+              right: 16,
+              top:
+                  MediaQuery.of(context).size.height * 0.2, // Center vertically
+              child: _buildCategoryBaskets(context, ref, categoriesAsync),
+            ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              maxBlastForce: 20,
+              minBlastForce: 8,
+              gravity: 0.2,
+            ),
           ),
           PopupMenuButton<String>(
             onSelected: (value) async {
               if (value == 'import_jira') {
-                // Show import dialog
-                final creds = await JiraService.getStoredCredentials();
-                final urlController = TextEditingController();
-                final userController = TextEditingController(text: creds['username'] ?? '');
-                final passController = TextEditingController(text: creds['password'] ?? '');
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'import_jira', child: Text('Import from JIRA'))
+                ],
+              ),
                 bool saveCreds = creds['username'] != null && creds['password'] != null;
 
-                await showDialog<void>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Import from JIRA'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: urlController,
-                            decoration: const InputDecoration(labelText: 'JIRA Issue URL'),
-                          ),
-                          TextField(
-                            controller: userController,
-                            decoration: const InputDecoration(labelText: 'Username'),
-                          ),
-                          TextField(
-                            controller: passController,
-                            decoration: const InputDecoration(labelText: 'Password'),
-                            obscureText: true,
-                          ),
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: saveCreds,
-                                onChanged: (v) => saveCreds = v ?? false,
-                              ),
-                              const Text('Save credentials')
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Cancel')),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final url = urlController.text.trim();
-                          final username = userController.text.trim();
-                          final password = passController.text;
-                          if (url.isEmpty || username.isEmpty || password.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
-                            return;
-                          }
-                          Navigator.of(context).pop();
-                          try {
-                            final issue = await JiraService.fetchIssueFromUrl(url, username, password);
-                            if (saveCreds) {
-                              await JiraService.storeCredentials(username, password);
-                            }
-                            final db = ref.read(databaseProvider);
-                            final newId = const Uuid().v4();
-                            await db.insertTodo(TodosCompanion.insert(
-                              id: newId,
-                              title: Value(issue['summary']),
-                              priority: const Value(1),
+          ],
+          ),
+          floatingActionButton: isCompactHeight || ref.watch(isDraggingTodoProvider)
+              ? null
+              : FloatingActionButton(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => const AddTodoDialog(),
+                    );
+                  },
+                  child: const Icon(Icons.add),
+                ),
+        );
                               timeEstimate: Value(''),
                               dueDate: Value(DateTime.now()),
                               encryptedBlob: '',
@@ -190,23 +206,407 @@ class HomeScreen extends ConsumerWidget {
                       child: TodoListTile(todo: item.todo, category: item.category),
                     ),
                   );
+                    },
+              floatingActionButton: isCompactHeight || ref.watch(isDraggingTodoProvider)
+          ? null
+          : FloatingActionButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const AddTodoDialog(),
+                );
+              },
+              child: const Icon(Icons.add),
+            ),
+    );
+  }
+
+  Widget _buildList(
+      BuildContext context,
+      WidgetRef ref,
+      AsyncValue<List<ListTodoResult>> todosStream,
+      AsyncValue<List<Category>> categoriesAsync,
+      bool isDesktop,
+      String? selectedTodoId,
+      bool isCompactHeight) {
+    return Column(
+      children: [
+        if (!isCompactHeight)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: categoriesAsync.when(
+              data: (categories) => DropdownButtonFormField<String?>(
+                initialValue: ref.watch(selectedCategoryProvider),
+                decoration: const InputDecoration(
+                    labelText: 'Kategorie Filter',
+                    border: OutlineInputBorder()),
+                items: [
+                  const DropdownMenuItem(
+                      value: null, child: Text('Alle Kategorien')),
+                  ...categories.map((c) =>
+                      DropdownMenuItem(value: c.id, child: Text(c.name ?? ''))),
+                ],
+                onChanged: (val) {
+                  ref.read(selectedCategoryProvider.notifier).state = val;
                 },
               ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, s) => Center(child: Text('Fehler: $e')),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, s) => const Text('Fehler beim Laden'),
+            ),
+          ),
+        Expanded(
+          child: todosStream.when(
+            data: (items) => items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.task_alt,
+                            size: 64, color: Colors.grey.shade300),
+                        const SizedBox(height: 16),
+                        Text('Keine Todos gefunden',
+                            style: TextStyle(color: Colors.grey.shade500)),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _buildGroupedList(
+                          context,
+                          ref,
+                          items,
+                          isDesktop,
+                          selectedTodoId,
+                        ),
+                      ),
+                    ],
+                  ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, s) => Center(child: Text('Fehler: $e')),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupedList(
+    BuildContext context,
+    WidgetRef ref,
+    List<ListTodoResult> items,
+    bool isDesktop,
+    String? selectedTodoId,
+  ) {
+    final inProgress =
+        items.where((i) => i.todo.status == 'In Progress').toList();
+    final inReview = items.where((i) => i.todo.status == 'Review').toList();
+    final other = items
+        .where(
+            (i) => i.todo.status != 'In Progress' && i.todo.status != 'Review')
+        .toList();
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.read(syncServiceProvider).sync();
+      },
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (inProgress.isNotEmpty) ...[
+            _buildSliverHeader('In Progress', context),
+            _buildSliverList(inProgress, isDesktop, selectedTodoId, ref),
+          ],
+          if (other.isNotEmpty) ...[
+            if (inProgress.isNotEmpty) _buildSliverHeader('Todos', context),
+            _buildSliverList(other, isDesktop, selectedTodoId, ref),
+          ],
+          if (inReview.isNotEmpty) ...[
+            _buildSliverHeader('In Review', context),
+            _buildSliverList(inReview, isDesktop, selectedTodoId, ref),
+          ],
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Open Add Todo Screen
-          // (Implement this navigation)
-        },
-        child: const Icon(Icons.add),
+    );
+  }
+
+  Widget _buildSliverHeader(String title, BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).primaryColor,
+            letterSpacing: 1.2,
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildSliverList(
+    List<ListTodoResult> items,
+    bool isDesktop,
+    String? selectedTodoId,
+    WidgetRef ref,
+  ) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = items[index];
+            final isSelected = selectedTodoId == item.todo.id;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GestureDetector(
+                onTap: () {
+                  if (isDesktop) {
+                    ref.read(selectedTodoIdProvider.notifier).state =
+                        item.todo.id;
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TodoDetailScreen(todo: item.todo),
+                      ),
+                    );
+                  }
+                },
+                child: Draggable<Todo>(
+                  data: item.todo,
+                  feedback: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context).cardColor,
+                    child: SizedBox(
+                      width: 300,
+                      child: TodoListTile(
+                          todo: item.todo, category: item.category),
+                    ),
+                  ),
+                  childWhenDragging: Opacity(
+                    opacity: 0.3,
+                    child: Container(
+                      decoration: isDesktop && isSelected
+                          ? BoxDecoration(
+                              border: Border.all(
+                                  color: Theme.of(context).primaryColor,
+                                  width: 2),
+                              borderRadius: BorderRadius.circular(12),
+                            )
+                          : null,
+                      child: TodoListTile(
+                          todo: item.todo, category: item.category),
+                    ),
+                  ),
+                  onDragStarted: () =>
+                      ref.read(isDraggingTodoProvider.notifier).state = true,
+                  onDragEnd: (_) =>
+                      ref.read(isDraggingTodoProvider.notifier).state = false,
+                  child: Container(
+                    decoration: isDesktop && isSelected
+                        ? BoxDecoration(
+                            border: Border.all(
+                                color: Theme.of(context).primaryColor,
+                                width: 2),
+                            borderRadius: BorderRadius.circular(12),
+                          )
+                        : null,
+                    child:
+                        TodoListTile(todo: item.todo, category: item.category),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: items.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetail(BuildContext context, WidgetRef ref,
+      AsyncValue<List<ListTodoResult>> todosStream, String? selectedTodoId) {
+    if (selectedTodoId == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.touch_app, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text('Wähle ein Todo aus, um Details zu sehen',
+                style: TextStyle(color: Colors.grey.shade500)),
+          ],
+        ),
+      );
+    }
+
+    return todosStream.when(
+      data: (items) {
+        final selected =
+            items.where((i) => i.todo.id == selectedTodoId).firstOrNull;
+        if (selected == null) {
+          return const Center(child: Text('Todo nicht gefunden oder gelöscht'));
+        }
+        return ClipRect(
+          child: TodoDetailScreen(todo: selected.todo, isEmbedded: true),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, s) => const Center(child: Text('Fehler')),
+    );
+  }
+
+  Widget _buildDragBaskets(BuildContext context, WidgetRef ref,
+      ConfettiController confettiController) {
+    final statuses = ['Backlog', 'In Progress', 'Review', 'Done'];
+    final colors = [Colors.grey, Colors.blue, Colors.orange, Colors.green];
+    final icons = [
+      Icons.inbox,
+      Icons.play_arrow,
+      Icons.visibility,
+      Icons.check
+    ];
+
+    return Material(
+      elevation: 12,
+      borderRadius: BorderRadius.circular(16),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        child: Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 16,
+          runSpacing: 16,
+          children: List.generate(4, (index) {
+            final status = statuses[index];
+            return DragTarget<Todo>(
+              onAcceptWithDetails: (details) async {
+                final todo = details.data;
+                final db = ref.read(databaseProvider);
+                await db.update(db.todos).replace(
+                    todo.copyWith(status: status, version: todo.version + 1));
+                if (status == 'Done') {
+                  confettiController.play();
+                }
+              },
+              builder: (context, candidateData, rejectedData) {
+                final isHovered = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 80,
+                  width: isHovered ? 140 : 120,
+                  decoration: BoxDecoration(
+                    color: isHovered
+                        ? colors[index].withValues(alpha: 0.2)
+                        : Theme.of(context).colorScheme.surface,
+                    border: Border.all(
+                        color: colors[index], width: isHovered ? 3 : 1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icons[index],
+                          color: colors[index], size: isHovered ? 32 : 24),
+                      const SizedBox(height: 8),
+                      Text(status,
+                          style: TextStyle(
+                              color: colors[index],
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12)),
+                    ],
+                  ),
+                );
+              },
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryBaskets(BuildContext context, WidgetRef ref,
+      AsyncValue<List<Category>> categoriesAsync) {
+    return categoriesAsync.when(
+      data: (categories) {
+        final topCategories = categories.take(3).toList();
+        if (topCategories.isEmpty) return const SizedBox.shrink();
+
+        return Material(
+          elevation: 12,
+          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize:
+                  MainAxisSize.min, // prevent column from expanding infinitely
+              children: topCategories.map((category) {
+                final catColor = _parseColor(category.color);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: DragTarget<Todo>(
+                    onAcceptWithDetails: (details) async {
+                      final todo = details.data;
+                      final db = ref.read(databaseProvider);
+                      await db.update(db.todos).replace(todo.copyWith(
+                          categoryId: drift.Value(category.id),
+                          version: todo.version + 1));
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      final isHovered = candidateData.isNotEmpty;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: isHovered ? 70 : 60,
+                        height: isHovered ? 70 : 60,
+                        decoration: BoxDecoration(
+                          color: isHovered
+                              ? catColor.withValues(alpha: 0.2)
+                              : Theme.of(context).colorScheme.surface,
+                          border: Border.all(
+                              color: catColor, width: isHovered ? 3 : 1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.label,
+                                color: catColor, size: isHovered ? 24 : 16),
+                            const SizedBox(height: 4),
+                            Text(
+                              category.name?.substring(
+                                      0, math.min(3, category.name!.length)) ??
+                                  '',
+                              style: TextStyle(
+                                  color: catColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }
 
-class TodoListTile extends StatelessWidget {
+class TodoListTile extends HookWidget {
   final Todo todo;
   final Category? category;
 
@@ -223,77 +623,127 @@ class TodoListTile extends StatelessWidget {
     }
   }
 
+  bool _isDueToday() {
+    if (todo.dueDate == null) return false;
+    final now = DateTime.now();
+    return todo.dueDate!.year == now.year &&
+        todo.dueDate!.month == now.month &&
+        todo.dueDate!.day == now.day;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isToday = _isDueToday();
+
+    // Pulse animation logic
+    final controller = useAnimationController(
+      duration: const Duration(seconds: 2),
+      lowerBound: 0.1,
+      upperBound: 1.0,
+    );
+
+    useEffect(() {
+      if (isToday) {
+        controller.repeat(reverse: true);
+      } else {
+        controller.stop();
+      }
+      return null;
+    }, [isToday]);
+
+    final pulseOpacity = useAnimation(controller);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 40,
-              decoration: BoxDecoration(
-                color: getPriorityColor(),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    todo.title ?? 'No Title',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (category != null) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color:
-                                _parseColor(category!.color).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            category!.name ?? '',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: _parseColor(category!.color),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Icon(Icons.calendar_today,
-                          size: 14, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(
-                        todo.dueDate != null
-                            ? DateFormat('dd.MM.yyyy').format(todo.dueDate!)
-                            : '',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                    ],
+      child: Container(
+        decoration: isToday
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.red.withValues(alpha: pulseOpacity),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withValues(alpha: pulseOpacity * 0.2),
+                    blurRadius: 8,
+                    spreadRadius: 2,
                   ),
                 ],
+              )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: getPriorityColor(),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            Text(
-              todo.status,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-            ),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      todo.title ?? 'No Title',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (category != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _parseColor(category!.color)
+                                  .withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              category!.name ?? '',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _parseColor(category!.color),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Icon(Icons.calendar_today,
+                            size: 14,
+                            color: isToday ? Colors.red : Colors.grey.shade600),
+                        const SizedBox(width: 4),
+                        Text(
+                          todo.dueDate != null
+                              ? DateFormat('dd.MM.yyyy').format(todo.dueDate!)
+                              : '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isToday ? Colors.red : Colors.grey.shade600,
+                            fontWeight: isToday ? FontWeight.bold : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                todo.status,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
         ),
       ),
     );
