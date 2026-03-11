@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:private_planner/providers/app_providers.dart';
 import 'package:private_planner/providers/database_provider.dart';
 import 'package:private_planner/services/sync_service.dart';
@@ -122,10 +125,42 @@ class TodoListView extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, s) => Center(child: Text('Fehler: $e')),
+            error: (e, s) {
+              if (e.toString().contains('strategy for schema updates')) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Database schema changed.\nPlease clear local data and restart.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final dbFolder = await getApplicationDocumentsDirectory();
+                          final file = File(p.join(dbFolder.path, 'db.sqlite'));
+                          if (await file.exists()) {
+                            await file.delete();
+                          }
+                          // Since we delete the file underneath, kill/restart app is needed.
+                          // Calling exit(0) restarts immediately on desktop, 
+                          // or prompts user to restart manually. (exit() needs dart:io).
+                          exit(0);
+                        },
+                        child: const Text('Delete Database & Restart'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return Center(child: Text('Fehler: $e'));
+            },
           ),
         ),
       ],
     );
   }
 }
+

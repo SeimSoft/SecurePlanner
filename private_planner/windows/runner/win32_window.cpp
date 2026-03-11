@@ -63,15 +63,6 @@ static void EnableBlurBehind(HWND hwnd) {
   DwmEnableBlurBehindWindow(hwnd, &bb);
 }
 
-// Toggle the taskbar auto-hide state. This uses SHAppBarMessage ABM_SETSTATE.
-static void SetTaskbarAutoHide(bool enable) {
-  APPBARDATA abd{};
-  abd.cbSize = sizeof(abd);
-  abd.hWnd = FindWindow(L"Shell_TrayWnd", nullptr);
-  abd.lParam = enable ? ABS_AUTOHIDE : 0;
-  SHAppBarMessage(ABM_SETSTATE, &abd);
-}
-
 }  // namespace
 
 // Manages the Win32Window's window class registration.
@@ -223,18 +214,30 @@ Win32Window::MessageHandler(HWND hwnd,
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
-      // If the window is very short, request the taskbar to auto-hide.
-      // Avoid repeated system calls by tracking the current state in
-      // `taskbar_auto_hidden_`.
+      
+      // Check window height and hide titlebar if it is very small.
+      // We toggle WS_CAPTION and WS_THICKFRAME to make it borderless,
+      // which allows it to be a small overlay in the corner.
       const int kHideThreshold = 220; // pixels
       int height = rect.bottom - rect.top;
-      if (height <= kHideThreshold && !taskbar_auto_hidden_) {
-        SetTaskbarAutoHide(true);
-        taskbar_auto_hidden_ = true;
-      } else if (height > kHideThreshold && taskbar_auto_hidden_) {
-        SetTaskbarAutoHide(false);
-        taskbar_auto_hidden_ = false;
+      LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+
+      if (height <= kHideThreshold && !titlebar_auto_hidden_) {
+        // Remove title bar and borders to minimize space occupation
+        SetWindowLongPtr(hwnd, GWL_STYLE, style & ~(WS_CAPTION | WS_THICKFRAME));
+        // Also ensure it stays on top when small
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        titlebar_auto_hidden_ = true;
+      } else if (height > kHideThreshold && titlebar_auto_hidden_) {
+        // Restore title bar and borders
+        SetWindowLongPtr(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME);
+        // Remove topmost status if it shouldn't apply when large
+        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        titlebar_auto_hidden_ = false;
       }
+
       return 0;
     }
 
