@@ -2,6 +2,8 @@
 
 #include <optional>
 
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 #include "flutter/generated_plugin_registrant.h"
 #include "native_drop_handler.h"
 

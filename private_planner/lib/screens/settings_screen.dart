@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:private_planner/services/auth_service.dart';
+import 'package:private_planner/services/security_service.dart';
 import 'package:private_planner/services/user_service.dart';
 import 'package:private_planner/providers/database_provider.dart';
 import 'package:private_planner/screens/qr_scan_screen.dart';

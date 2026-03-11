@@ -108,6 +108,19 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 3; // Incremented schema version
 
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // Destructive fallback: drop everything and recreate.
+          // In the future we can add incremental migration steps here.
+          for (final table in allTables) {
+            await m.deleteTable(table.actualTableName);
+          }
+          await m.createAll();
+        },
+      );
+
   // Todos
   Future<List<Todo>> getAllTodos() => select(todos).get();
   Stream<List<ListTodoResult>> watchTodosWithCategory(
