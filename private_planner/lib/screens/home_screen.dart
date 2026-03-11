@@ -176,7 +176,6 @@ class _CompactSingleTodoView extends ConsumerWidget {
         ref.watch(watchTodosWithCategoryProvider(selectedCategory));
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
       body: todosAsync.when(
         data: (items) {
           // Find the first todo with status "In Progress"

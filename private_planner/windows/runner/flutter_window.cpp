@@ -62,6 +62,14 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // When the titlebar is auto-hidden (compact/borderless mode), we MUST handle
+  // WM_NCHITTEST BEFORE Flutter's HandleTopLevelWindowProc, because Flutter
+  // returns HTCLIENT for the entire surface and swallows our custom
+  // drag/resize hit-test.
+  if (message == WM_NCHITTEST && IsTitlebarAutoHidden()) {
+    return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

@@ -55,15 +55,6 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
   FreeLibrary(user32_module);
 }
 
-// Helper to enable blur behind the window (simple translucent background).
-static void EnableBlurBehind(HWND hwnd) {
-  DWM_BLURBEHIND bb{};
-  bb.dwFlags = DWM_BB_ENABLE;
-  bb.fEnable = TRUE;
-  bb.hRgnBlur = nullptr;  // nullptr blurs the entire window
-  DwmEnableBlurBehindWindow(hwnd, &bb);
-}
-
 }  // namespace
 
 // Manages the Win32Window's window class registration.
@@ -324,11 +315,7 @@ void Win32Window::SetQuitOnClose(bool quit_on_close) {
 }
 
 bool Win32Window::OnCreate() {
-  // Enable blur behind for a translucent background if we have a valid
-  // window handle. Subclasses may still override this behavior.
-  if (window_handle_) {
-    EnableBlurBehind(window_handle_);
-  }
+  // No-op by default; subclasses may override.
   return true;
 }
 
