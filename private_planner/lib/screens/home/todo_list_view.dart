@@ -126,7 +126,8 @@ class TodoListView extends ConsumerWidget {
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, s) {
-              if (e.toString().contains('strategy for schema updates')) {
+              final msg = e.toString().toLowerCase();
+              if (msg.contains('strategy for schema') || msg.contains('schema') || msg.contains('migration')) {
                 return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -139,15 +140,35 @@ class TodoListView extends ConsumerWidget {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () async {
-                          final dbFolder = await getApplicationDocumentsDirectory();
-                          final file = File(p.join(dbFolder.path, 'db.sqlite'));
-                          if (await file.exists()) {
-                            await file.delete();
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Confirm Delete'),
+                              content: const Text('Delete local database and restart the app? This will remove all local data.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                  child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+
+                          final scaffold = ScaffoldMessenger.of(context);
+                          scaffold.showSnackBar(const SnackBar(content: Text('Deleting database...')));
+                          try {
+                            final dbFolder = await getApplicationDocumentsDirectory();
+                            final file = File(p.join(dbFolder.path, 'db.sqlite'));
+                            if (await file.exists()) {
+                              await file.delete();
+                            }
+                            scaffold.showSnackBar(const SnackBar(content: Text('Database deleted. Please restart the app.')));
+                          } catch (e) {
+                            scaffold.showSnackBar(SnackBar(content: Text('Failed to delete database: $e')));
                           }
-                          // Since we delete the file underneath, kill/restart app is needed.
-                          // Calling exit(0) restarts immediately on desktop, 
-                          // or prompts user to restart manually. (exit() needs dart:io).
-                          exit(0);
                         },
                         child: const Text('Delete Database & Restart'),
                       ),

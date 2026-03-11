@@ -16,6 +16,8 @@ final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final selectedTodoIdProvider = StateProvider<String?>((ref) => null);
 final isDraggingTodoProvider = StateProvider<bool>((ref) => false);
 final showDoneTodosProvider = StateProvider<bool>((ref) => false);
+// Whether the native window has its titlebar auto-hidden (compact borderless mode).
+final titlebarHiddenProvider = StateProvider<bool>((ref) => false);
 
 final watchTodosWithCategoryProvider =
     StreamProvider.family<List<ListTodoResult>, String?>((ref, categoryId) {

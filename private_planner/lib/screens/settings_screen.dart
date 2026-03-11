@@ -229,6 +229,23 @@ class SettingsScreen extends HookConsumerWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+              FutureBuilder<bool>(
+                future: ref.read(securityServiceProvider).shouldPromptBiometrics(),
+                builder: (context, snap) {
+                  final enabled = snap.data == true;
+                  return SwitchListTile(
+                    title: const Text('Use biometric login'),
+                    subtitle: const Text('Use fingerprint/FaceID where available'),
+                    value: enabled,
+                    onChanged: (v) async {
+                      await ref.read(securityServiceProvider).setUseBiometrics(v);
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(v ? 'Biometric login enabled' : 'Biometric login disabled')));
+                      // force rebuild to reflect new state
+                      (context as Element).markNeedsBuild();
+                    },
+                  );
+                },
+              ),
               TextField(
                 controller: encryptionPasswordController,
                 obscureText: true,

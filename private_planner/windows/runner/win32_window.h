@@ -99,6 +99,10 @@ class Win32Window {
   HWND child_content_ = nullptr;
   // Whether we've hidden the application title bar because it's small.
   bool titlebar_auto_hidden_ = false;
+
+ protected:
+  // Query whether the window's titlebar was auto-hidden due to compact size.
+  bool IsTitlebarAutoHidden() const { return titlebar_auto_hidden_; }
 };
 
 #endif  // RUNNER_WIN32_WINDOW_H_

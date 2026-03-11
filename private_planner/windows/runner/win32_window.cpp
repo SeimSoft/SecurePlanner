@@ -189,6 +189,31 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_NCHITTEST: {
+      if (titlebar_auto_hidden_) {
+        // Allow resizing by checking borders and otherwise allow dragging from anywhere.
+        POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+        RECT wr;
+        GetWindowRect(hwnd, &wr);
+        const int border = 8; // resize border thickness
+        // left/right/top/bottom
+        if (pt.x >= wr.left && pt.x < wr.left + border) {
+          if (pt.y >= wr.top && pt.y < wr.top + border) return HTTOPLEFT;
+          if (pt.y <= wr.bottom && pt.y > wr.bottom - border) return HTBOTTOMLEFT;
+          return HTLEFT;
+        }
+        if (pt.x <= wr.right && pt.x > wr.right - border) {
+          if (pt.y >= wr.top && pt.y < wr.top + border) return HTTOPRIGHT;
+          if (pt.y <= wr.bottom && pt.y > wr.bottom - border) return HTBOTTOMRIGHT;
+          return HTRIGHT;
+        }
+        if (pt.y >= wr.top && pt.y < wr.top + border) return HTTOP;
+        if (pt.y <= wr.bottom && pt.y > wr.bottom - border) return HTBOTTOM;
+        // Default: treat as caption so user can drag from client area
+        return HTCAPTION;
+      }
+      break;
+    }
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();

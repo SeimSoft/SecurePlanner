@@ -76,5 +76,20 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       break;
   }
 
-  return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+  // Let base class handle the message first; it may change titlebar_auto_hidden_.
+  LRESULT base_result = Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+
+  // Notify Flutter when the titlebar auto-hidden state changes (e.g., compact borderless).
+  if (message == WM_SIZE && flutter_controller_ && flutter_controller_->engine()) {
+    auto messenger = flutter_controller_->engine()->messenger();
+    if (messenger) {
+      flutter::MethodChannel<flutter::EncodableValue> channel(messenger, "window_state",
+                                                               &flutter::StandardMethodCodec::GetInstance());
+      bool hidden = IsTitlebarAutoHidden();
+      auto args = std::make_unique<flutter::EncodableValue>(flutter::EncodableValue(hidden));
+      channel.InvokeMethod("titlebarHidden", std::move(args));
+    }
+  }
+
+  return base_result;
 }
